@@ -1,0 +1,15 @@
+# Sau `sudo bash install.sh`, mẫu nằm tại:
+#   /usr/local/share/linux-telegram-monitor/server-telegram-report.conf.example
+# Sao chép: sudo cp /usr/local/share/linux-telegram-monitor/server-telegram-report.conf.example /etc/server-telegram-report.conf
+#           sudo chmod 600 /etc/server-telegram-report.conf
+#
+# TELEGRAM_BOT_TOKEN — từ @BotFather
+# TELEGRAM_CHAT_ID   — user hoặc nhóm (getUpdates)
+
+TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
+
+# Tùy chọn:
+# TZ="Asia/Ho_Chi_Minh"
+# CURL_TIMEOUT=60
+# INSTALL_MISSING_DEPS=1    # thử apt-get/dnf cài curl v.v. nếu thiếu (1=mặc định)
