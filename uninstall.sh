@@ -72,7 +72,13 @@ rm -f -- \
   "$BIN/server-telegram-update" \
   "$BIN/server-telegram-report" \
   "$BIN/ltm-bot" \
+  "$BIN/ltm-schedule" \
   2>/dev/null || true
+
+if [[ -z "$DESTDIR" ]] && [[ -f /etc/cron.d/linux-telegram-monitor ]]; then
+  rm -f -- /etc/cron.d/linux-telegram-monitor
+  echo "→ Đã xoá /etc/cron.d/linux-telegram-monitor"
+fi
 
 echo "→ Xoá thư mục mẫu cấu hình (${SHARE})…"
 rm -rf -- "$SHARE" 2>/dev/null || true
@@ -99,6 +105,6 @@ fi
 echo ""
 echo "Đã gỡ (trong PREFIX=${PREFIX}${DESTDIR:+(DESTDIR)}) phần cài từ install.sh."
 echo "Nhớ tự tay:"
-echo "  • Cron: bỏ dòng server-telegram-report / ltm-report / …"
+echo "  • Cron: nếu từng thêm tay vào crontab khác (/root), bỏ dòng / trùng lịch với cron.d đã xoá"
 echo "  • systemd: sudo systemctl disable --now ltm-bot  &&  sudo rm -f /etc/systemd/system/ltm-bot.service  &&  sudo systemctl daemon-reload"
 echo "  • Log: /var/log/server-telegram-update*.log (tuỳ bạn)"

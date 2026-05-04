@@ -5,6 +5,7 @@
 #
 # Tự động bỏ qua hỏi tuỳ chọn: SKIP_INSTALL_PROMPTS=1 hoặc không có TTY (cron/pipe)
 # Kiểu cấu hình (chỉ khi có TTY): LTM_INSTALL_PROFILE=basic|advanced — bỏ qua menu chọn 1/2
+# Lịch cron sau cài khi không hỏi: LTM_INSTALL_CRON=default (báo ~6 giờ + cập nhật CN)
 # Chỉ tạo file trong DESTDIR (đóng gói): không ghi /etc
 
 set -euo pipefail
@@ -26,6 +27,7 @@ install -d -m 755 "$SHARE"
 install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update.sh" "$BIN/server-telegram-update"
 install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report.sh" "$BIN/server-telegram-report"
 install -m 755 "$SCRIPT_DIR/scripts/ltm-telegram-bot.sh" "$BIN/ltm-bot"
+install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule.sh" "$BIN/ltm-schedule"
 
 ln -sf server-telegram-update "$BIN/ltm-update"
 ln -sf server-telegram-report "$BIN/ltm-report"
@@ -225,13 +227,39 @@ interactive_configure() {
   fi
 }
 
+_maybe_cron_schedule() {
+  [[ -n "${DESTDIR:-}" ]] && return 0
+  if [[ "${SKIP_INSTALL_PROMPTS:-0}" == "1" ]]; then
+    case "${LTM_INSTALL_CRON:-}" in
+    default | defaults | 1 | yes | y | Y)
+      if [[ -x "$BIN/ltm-schedule" ]]; then
+        "$BIN/ltm-schedule" defaults || true
+      fi
+      ;;
+    esac
+    return 0
+  fi
+  if [[ ! -t 0 ]] || [[ ! -c /dev/tty ]]; then
+    return 0
+  fi
+  if ! [[ -x "$BIN/ltm-schedule" ]]; then
+    return 0
+  fi
+  echo ""
+  if _prompt_yes "Đặt lịch cron: báo cáo mỗi ~6 giờ, chạy cập nhật Chủ Nhật 03:00? (đổi sau: sudo ltm-schedule)" y; then
+    "$BIN/ltm-schedule" defaults </dev/null || true
+  fi
+}
+
 interactive_configure
+_maybe_cron_schedule
 
 cat <<EOF
 Đã cài:
   $BIN/server-telegram-update   (ltm-update)
   $BIN/server-telegram-report    (ltm-report)
   $BIN/ltm-bot                 — bot lệnh Telegram (cần jq, xem README)
+  $BIN/ltm-schedule           — ghi lịch cron báo/cập nhật
 
 Mẫu tham chiếu (nếu không dùng file đã tạo):
   $SHARE/server-telegram-update.conf.example
@@ -242,9 +270,14 @@ Chạy:
   sudo server-telegram-update   hoặc   sudo ltm-update
   sudo server-telegram-report  hoặc   sudo ltm-report
   sudo ltm-bot                  — lệnh từ Telegram (/report, /help, …)
+  sudo ltm-schedule             — hoặc: sudo ltm-schedule defaults
+
+Sau khi git pull bản mới:  SKIP_INSTALL_PROMPTS=1 sudo bash install.sh
+  (ghi đè lệnh + mẫu share, giữ /etc; systemd: systemctl restart ltm-bot nếu có)
 
 Tuỳ chọn môi trường:
-  SKIP_INSTALL_PROMPTS=1        — không hỏi, chỉ cài binary
+  SKIP_INSTALL_PROMPTS=1        — không hỏi, chỉ cài binary (cron: có thể đặt LTM_INSTALL_CRON=default)
+  LTM_INSTALL_CRON=default      — chỉ có nghĩa khi kèm SKIP_INSTALL_PROMPTS=1: ghi cron mặc định luôn
   LTM_INSTALL_PROFILE=basic     — cấu hình tương tác ngắn (bỏ qua menu 1/2)
   LTM_INSTALL_PROFILE=advanced — hỏi đầy đủ như chọn "2" trên menu
 EOF

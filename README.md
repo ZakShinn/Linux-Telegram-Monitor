@@ -40,7 +40,9 @@ cd Linux-Telegram-Monitor
 sudo bash install.sh
 ```
 
-Script sẽ hỏi vài điều: **cấu hình ngắn** hoặc **đầy đủ**, rồi có thể ghi file dưới **`/etc`** và hỏi nhập token + chat id (hoặc bạn sửa file sau bằng `nano`).
+Script hỏi **cấu hình ngắn hay đầy đủ**, có thể ghi **`/etc`**, và cuối cùng (**mặc định Có**) đề nghị **bật lịch cron** gửi báo cáo ~6 giờ/lần + chạy cập nhật **Chủ Nhật 03:00**. Bạn chỉnh lại hoặc tắt bằng lệnh bên dưới.
+
+Cài không hỏi gì (**`SKIP_INSTALL_PROMPTS=1`**) có thể thêm **`LTM_INSTALL_CRON=default`** để **vẫn ghi cron mặc định**.
 
 ### 3. Thử báo cáo
 
@@ -50,18 +52,26 @@ sudo ltm-report
 
 Nếu Telegram nhận được báo cáo là ổn. **Docker** không hiện nếu tài khoản chạy lệnh không có quyền với Docker — thường chạy bằng **root** hoặc thêm user vào nhóm **docker**.
 
-### 4. Lịch tự động (tuỳ nhu cầu)
+### 4. Lịch gửi báo / chạy cập nhật
+
+Lệnh **`ltm-schedule`** ghi file **`/etc/cron.d/linux-telegram-monitor`** (không xen vào **`crontab -e`** trừ khi bạn tự làm tay).
 
 ```bash
-sudo crontab -e
+sudo ltm-schedule                   # wizard: chọn từng khoảng thời gian
+sudo ltm-schedule defaults          # báo ~6 giờ/lần + cập nhật CN 03:00
+sudo ltm-schedule show              # xem lịch hiện tại
+sudo ltm-schedule remove            # xoá file cron.d do ltm tạo
 ```
 
-Ví dụ: **mỗi 6 giờ** báo cáo, **mỗi tuần** chạy cập nhật (chỉ khi bạn muốn tự động cập nhật):
+Ví dụ **đặt không hỏi menu** — báo mỗi **4 giờ**, cập nhật **tuần 1 lần lúc 2h**:
 
-```cron
-0 3 * * 0 /usr/local/bin/ltm-update >> /var/log/server-telegram-update.cron.log 2>&1
-0 */6 * * * /usr/local/bin/ltm-report >> /var/log/server-telegram-report.cron.log 2>&1
+```bash
+sudo ltm-schedule apply --report 4h --update weekly --update-hour 2
 ```
+
+(**`--report off`** / **`--update off`** nếu muốn tắt một trong hai.) Log cron: **`/var/log/ltm-report.cron.log`**, **`/var/log/ltm-update.cron.log`**.
+
+*Nếu bạn vẫn thích chỉ tay:* `sudo crontab -e` vẫn dùng được; tránh **`ltm-schedule`** trùng thời gian với dòng tay.
 
 ### 5. Bot lệnh (tuỳ chọn)
 
@@ -75,6 +85,21 @@ sudo nano /etc/ltm-telegram-bot.conf
 Điền **token** và **chat id** giống báo cáo (file mẫu có gợi ý dùng chung với file báo cáo). Chạy **`sudo ltm-bot`** hoặc tạo **service systemd** trỏ tới `ltm-bot` để chạy nền.
 
 **Lưu ý:** chỉ chạy **một** bot lắng nghe lệnh với **cùng** token Telegram.
+
+### Cập nhật sau khi repo có bản mới (`git pull`)
+
+Trong **cùng thư mục** đã clone:
+
+```bash
+git pull
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+```
+
+Cách này **ghi đè các lệnh** (`ltm-update`, `ltm-report`, `ltm-bot`, `ltm-schedule`…) và mẫu trong **`share/`**, nhưng **không chạy lại phần hỏi cấu hình**, nên file **`/etc/server-telegram-*.conf`** và **`/etc/ltm-telegram-bot.conf`** của bạn **giữ nguyên**. Cron do **`ltm-schedule`** tạo **không đổi**, trừ khi bạn tự chỉnh lại.
+
+Đang chạy bot nền (**systemd**): **`sudo systemctl restart ltm-bot`** để dùng bản **`ltm-bot`** mới.
+
+Nếu bạn **không** dùng `SKIP_INSTALL_PROMPTS=1`, chạy `install.sh` bình thường được; khi được hỏi **ghi đè** các file **`/etc`**, chọn **không** nếu muốn **giữ** token và chỉnh tay hiện tại — so sánh tay với **`*.conf.example`** mới trong **`share`** nếu có thêm dòng trong bản repo.
 
 ---
 
@@ -117,7 +142,7 @@ sudo ltm-report      # hay: sudo server-telegram-report
 
 ## Nâng cao (ích khi làm máy chủ/DevOps)
 
-Biến môi trường khi cài: **`SKIP_INSTALL_PROMPTS`**, **`LTM_INSTALL_PROFILE`**, **`PREFIX`**, **`DESTDIR`**… xem trong **`install.sh`**. Bot có thêm **`REMOTE_CMD_TIMEOUT`** trong file cấu hình.
+Biến môi trường khi cài: **`SKIP_INSTALL_PROMPTS`**, **`LTM_INSTALL_CRON`** (kèm skip: ghi cron mặc định), **`LTM_INSTALL_PROFILE`**, **`PREFIX`**, **`DESTDIR`**… xem trong **`install.sh`**. Bot có thêm **`REMOTE_CMD_TIMEOUT`** trong file cấu hình.
 
 Trên Telegram có thể dùng **BotFather → Edit Commands** để nhập danh sách lệnh gợi ý (định dạng theo [tài liệu Telegram](https://core.telegram.org/bots/api#setmycommands)).
 
