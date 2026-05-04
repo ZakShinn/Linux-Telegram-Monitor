@@ -3,14 +3,14 @@
 #
 # CÀI ĐẶT
 # -------
-# sudo bash install.sh          # từ thư mục gốc repo → /usr/local/bin/server-telegram-report
+# sudo bash install.sh          # → /usr/local/bin/server-telegram-report và ltm-report (tên ngắn)
 # sudo cp /usr/local/share/linux-telegram-monitor/server-telegram-report.conf.example /etc/server-telegram-report.conf
 # sudo chmod 600 /etc/server-telegram-report.conf
 # # điền TELEGRAM_BOT_TOKEN và TELEGRAM_CHAT_ID
 # sudo server-telegram-report
 #
 # Cron mỗi 6 giờ:
-# 0 */6 * * * /usr/local/bin/server-telegram-report >>/var/log/server-telegram-report.cron.log 2>&1
+# 0 */6 * * * /usr/local/bin/ltm-report >>/var/log/server-telegram-report.cron.log 2>&1
 #
 # Biến môi trường (nếu không dùng file): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 # Legacy: TOKEN, CHAT_ID vẫn được đọc nếu hai biến trên trống.
@@ -34,6 +34,28 @@ TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-${CHAT_ID:-}}"
 CURL_TIMEOUT="${CURL_TIMEOUT:-60}"
 INSTALL_MISSING_DEPS="${INSTALL_MISSING_DEPS:-1}"
 TZ="${TZ:-Asia/Ho_Chi_Minh}"
+
+# Theo dõi bổ sung (1 = bật, 0 = tắt)
+MONITOR_SYSTEMD_FAILED="${MONITOR_SYSTEMD_FAILED:-1}"
+MONITOR_LAST_BOOT="${MONITOR_LAST_BOOT:-1}"
+MONITOR_DF_ALL="${MONITOR_DF_ALL:-1}"
+MONITOR_INODES="${MONITOR_INODES:-1}"
+MONITOR_MEMINFO="${MONITOR_MEMINFO:-1}"
+MONITOR_LISTEN_PORTS="${MONITOR_LISTEN_PORTS:-1}"
+MONITOR_IP_BRIEF="${MONITOR_IP_BRIEF:-1}"
+MONITOR_DOCKER="${MONITOR_DOCKER:-1}"
+# Chỉ có hiệu lực khi MONITOR_DOCKER=1 và đã kết nối docker
+MONITOR_DOCKER_SYSTEM_DF="${MONITOR_DOCKER_SYSTEM_DF:-1}"
+MONITOR_DOCKER_HEALTH="${MONITOR_DOCKER_HEALTH:-1}"
+MONITOR_DOCKER_COMPOSE="${MONITOR_DOCKER_COMPOSE:-0}"
+MONITOR_DOCKER_NETWORKS="${MONITOR_DOCKER_NETWORKS:-0}"
+# Cảnh báo & nâng cao (mặc định an toàn: journal/tls tắt nếu không cần)
+MONITOR_ZOMBIES="${MONITOR_ZOMBIES:-1}"
+MONITOR_DISK_ALERT="${MONITOR_DISK_ALERT:-1}"
+DISK_ALERT_PERCENT="${DISK_ALERT_PERCENT:-90}"
+MONITOR_TLS_CERTS="${MONITOR_TLS_CERTS:-0}"
+CERT_WARN_DAYS="${CERT_WARN_DAYS:-30}"
+MONITOR_JOURNAL_ERR="${MONITOR_JOURNAL_ERR:-0}"
 
 API_MSG_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
 API_DOC_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
@@ -64,9 +86,11 @@ install_missing() {
   for b in "${req[@]}"; do
     need "$b" || miss+=("$b")
   done
+  need ss || miss+=(ss)
+  need ip || miss+=(ip)
   [ "${#miss[@]}" -eq 0 ] && return 0
 
-  local pkgs_common=(curl sed gawk grep procps coreutils util-linux)
+  local pkgs_common=(curl sed gawk grep procps coreutils util-linux iproute2)
   local pkgs_sensors_apt=(lm-sensors)
   local pkgs_sensors_rpm=(lm_sensors)
 
@@ -74,15 +98,16 @@ install_missing() {
     as_root sh -c 'export DEBIAN_FRONTEND=noninteractive; apt-get -yq update' || true
     as_root apt-get -yq install --no-install-recommends "${pkgs_common[@]}" "${pkgs_sensors_apt[@]}" || true
   elif command -v dnf >/dev/null 2>&1; then
-    as_root dnf -y install "${pkgs_common[@]}" || true
+    local pkgs_rhel=(curl sed gawk grep procps coreutils util-linux iproute)
+    as_root dnf -y install "${pkgs_rhel[@]}" || true
     as_root dnf -y install epel-release || true
     as_root dnf -y install "${pkgs_sensors_rpm[@]}" || true
   elif command -v yum >/dev/null 2>&1; then
-    as_root yum -y install "${pkgs_common[@]}" || true
+    as_root yum -y install curl sed gawk grep procps coreutils util-linux iproute || true
     as_root yum -y install epel-release || true
     as_root yum -y install "${pkgs_sensors_rpm[@]}" || true
   elif command -v apk >/dev/null 2>&1; then
-    as_root apk add --no-cache "${pkgs_common[@]}" || true
+    as_root apk add --no-cache curl sed gawk grep procps coreutils util-linux iproute2 || true
     as_root apk add --no-cache lm-sensors || true
   fi
 }
@@ -105,6 +130,139 @@ tg_send_doc() {
 }
 
 sanitize_pre() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+# Mountpoint % — các dòng có Use% ≥ ngưỡng (theo df -P)
+collect_disk_pressure_lines() {
+  local th="${DISK_ALERT_PERCENT:-90}"
+  df -P -x tmpfs -x devtmpfs 2>/dev/null | awk -v th="$th" '
+    NR > 1 && $1 ~ /^\/dev/ {
+      pct = $(NF - 1)
+      gsub(/%/, "", pct)
+      if ((pct + 0) >= (th + 0))
+        printf "%s  %s%%\n", $NF, pct
+    }'
+}
+
+report_tls_letsencrypt() {
+  [[ "$MONITOR_TLS_CERTS" != "1" ]] && return 0
+  local ledir="/etc/letsencrypt/live"
+  if ! command -v openssl >/dev/null 2>&1; then
+    tg_send "<b>🔐 TLS</b>: cài <code>openssl</code> để kiểm tra chứng chỉ."
+    return 0
+  fi
+  if [[ ! -d "$ledir" ]]; then
+    tg_send "<b>🔐 TLS</b>: không có <code>$ledir</code> (bỏ qua Let's Encrypt)."
+    return 0
+  fi
+  local out="" cert name line end_epoch now days warn wdays
+  now=$(date +%s)
+  wdays="${CERT_WARN_DAYS:-30}"
+  shopt -s nullglob
+  for cert in "$ledir"/*/cert.pem; do
+    [[ -f "$cert" ]] || continue
+    name=$(basename "$(dirname "$cert")")
+    line=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2-)
+    [[ -z "$line" ]] && continue
+    if end_epoch=$(date -d "$line" +%s 2>/dev/null); then
+      days=$(( (end_epoch - now) / 86400 ))
+      warn=""
+      [[ "$days" -lt "$wdays" ]] && warn="⚠️ "
+      out+=$(printf '%s\n' "${warn}${name} | còn ${days} ngày (nhắc <${wdays}d) | notAfter=${line}")
+    fi
+  done
+  shopt -u nullglob
+  if [[ -z "$out" ]]; then
+    out="(không đọc được cert.pem trong $ledir)"
+  fi
+  tg_send_pre_trunc "🔐 Chứng chỉ TLS (LE / openssl)" "$(printf '%s' "$out")"
+}
+
+# Khối text → Telegram &lt;pre&gt; (cắt nếu quá dài)
+tg_send_pre_trunc() {
+  local title=$1
+  local raw=$2
+  local limit="${3:-3800}"
+  local esc
+  esc=$(printf '%s' "$raw" | sanitize_pre)
+  if [[ ${#esc} -gt "$limit" ]]; then
+    esc="${esc:0:$limit}"$'\n...(đã cắt bớt)...'
+  fi
+  tg_send "<b>$title</b><pre>$esc</pre>"
+}
+
+extra_monitoring() {
+  local buf
+
+  if [[ "$MONITOR_LAST_BOOT" == "1" ]] || [[ "$MONITOR_SYSTEMD_FAILED" == "1" ]]; then
+    buf=""
+    if [[ "$MONITOR_LAST_BOOT" == "1" ]]; then
+      buf+="$(who -b 2>/dev/null | head -n 1)"$'\n\n'
+    fi
+    if [[ "$MONITOR_SYSTEMD_FAILED" == "1" ]]; then
+      if command -v systemctl >/dev/null 2>&1; then
+        buf+="systemctl --failed:"$'\n'
+        local failed
+        failed=$(systemctl list-units --failed --no-legend --no-pager 2>/dev/null | head -n 35)
+        if [[ -z "${failed//[:space:]/}" ]]; then
+          buf+="(không có unit failed)"$'\n'
+        else
+          buf+="$failed"$'\n'
+        fi
+      else
+        buf+="(không có systemctl — bỏ qua failed units)"$'\n'
+      fi
+    fi
+    tg_send_pre_trunc "⚙️ Boot &amp; systemd" "$buf"
+  fi
+
+  if [[ "$MONITOR_DF_ALL" == "1" ]]; then
+    buf=$(df -hT 2>/dev/null | head -n 50)
+    tg_send_pre_trunc "💽 Filesystems (df -hT)" "$buf"
+  fi
+
+  if [[ "$MONITOR_INODES" == "1" ]]; then
+    buf=$(df -ih 2>/dev/null | head -n 50)
+    tg_send_pre_trunc "📇 Inodes (df -ih)" "$buf"
+  fi
+
+  if [[ "$MONITOR_MEMINFO" == "1" ]]; then
+    buf=$(grep -E '^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree|SwapCached):' /proc/meminfo 2>/dev/null || true)
+    [[ -n "$buf" ]] && tg_send_pre_trunc "🧠 /proc/meminfo (tóm tắt)" "$buf"
+  fi
+
+  if [[ "$MONITOR_LISTEN_PORTS" == "1" ]]; then
+    if need ss; then
+      buf=$(ss -tuln 2>/dev/null | head -n 100)
+    else
+      buf="(chưa có lệnh ss — cài gói iproute2 / iproute)"
+    fi
+    tg_send_pre_trunc "🔌 Cổng lắng nghe (ss -tuln)" "$buf"
+  fi
+
+  if [[ "$MONITOR_IP_BRIEF" == "1" ]]; then
+    if need ip; then
+      buf=$(ip -br a 2>/dev/null || true)
+    else
+      buf="(chưa có lệnh ip — cài iproute2 / iproute)"
+    fi
+    [[ -n "$buf" ]] && tg_send_pre_trunc "📶 Giao diện &amp; IP (ip -br a)" "$buf"
+  fi
+
+  report_tls_letsencrypt
+
+  if [[ "$MONITOR_JOURNAL_ERR" == "1" ]]; then
+    if command -v journalctl >/dev/null 2>&1; then
+      buf=$(journalctl -p err..alert --no-pager -n 35 -q 2>/dev/null || true)
+      if [[ -n "${buf//[:space:]/}" ]]; then
+        tg_send_pre_trunc "📜 systemd journal (err…alert)" "$buf"
+      else
+        tg_send "<b>📜 journal</b>: không có dòng err/alert gần đây (hoặc không đọc được)."
+      fi
+    else
+      tg_send "<b>📜 journal</b>: không có <code>journalctl</code>."
+    fi
+  fi
+}
 
 human_bytes() {
   local b="${1:-0}"
@@ -256,6 +414,32 @@ docker_report() {
     } >"$tmpf"
     tg_send_doc "$tmpf" "📦 Containers (chi tiết)"
   fi
+
+  # --- Docker: bổ sung (container / tài nguyên) ---
+  local dx
+  if [[ "${MONITOR_DOCKER_SYSTEM_DF:-1}" == "1" ]]; then
+    dx=$(docker system df 2>/dev/null || true)
+    [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Docker — <code>system df</code> (ảnh/container/build cache)" "$dx"
+  fi
+
+  if [[ "${MONITOR_DOCKER_HEALTH:-1}" == "1" ]]; then
+    dx=$(docker ps -a --filter health=unhealthy --format '{{.Names}}	{{.Status}}' 2>/dev/null || true)
+    if [[ -z "${dx//[:space:]/}" ]]; then
+      tg_send "<b>🐳 Healthcheck</b>: không có container <code>unhealthy</code>."
+    else
+      tg_send_pre_trunc "🐳 Container <code>unhealthy</code> (healthcheck)" "$(printf '%s\n' "$dx" | tr '\t' ' ')"
+    fi
+  fi
+
+  if [[ "${MONITOR_DOCKER_COMPOSE:-0}" == "1" ]] && docker compose version >/dev/null 2>&1; then
+    dx=$(docker compose ls -a 2>/dev/null || true)
+    [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Compose — <code>docker compose ls -a</code>" "$dx"
+  fi
+
+  if [[ "${MONITOR_DOCKER_NETWORKS:-0}" == "1" ]]; then
+    dx=$(docker network ls --format 'table {{.Name}}	{{.Driver}}	{{.Scope}}	{{.ID}}' 2>/dev/null | head -n 40 || true)
+    [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Docker networks" "$dx"
+  fi
 }
 
 # --- main ---
@@ -283,6 +467,20 @@ PROCESS=$(ps -e --no-headers 2>/dev/null | wc -l | tr -d ' ')
 USERS=$(who 2>/dev/null | wc -l | tr -d ' ')
 TEMP=$(cpu_temp)
 
+ZOMBIE_LINE=""
+if [[ "$MONITOR_ZOMBIES" == "1" ]]; then
+  ZC=$(ps -eo stat= 2>/dev/null | grep -c '^Z' || true)
+  ZOMBIE_LINE="• Zombies: <code>${ZC:-0}</code>"$'\n'
+fi
+
+DISK_ALERT_BLOCK=""
+if [[ "$MONITOR_DISK_ALERT" == "1" ]]; then
+  DPL=$(collect_disk_pressure_lines || true)
+  if [[ -n "${DPL//[:space:]/}" ]]; then
+    DISK_ALERT_BLOCK=$'\n'"⚠️ <b>Ổ gần đầy (≥${DISK_ALERT_PERCENT}%)</b>"$'\n'"<pre>$(printf '%s' "$DPL" | sanitize_pre)</pre>"
+  fi
+fi
+
 MSG_HEAD=$(cat <<EOF
 <b>📡 Server Report</b>
 
@@ -302,6 +500,7 @@ MSG_HEAD=$(cat <<EOF
 • LoadAvg: <code>$LOAD_AVG</code>
 • CPU Temp: <code>$TEMP</code>
 • Processes / Sessions: <code>$PROCESS / $USERS</code>
+${ZOMBIE_LINE}${DISK_ALERT_BLOCK}
 EOF
 )
 tg_send "$MSG_HEAD"
@@ -325,6 +524,10 @@ tg_send "<b>🌍 Network</b><pre>$NET_TABLE</pre>"
 PS_SHOW=$(ps -eo pid,user,%cpu,%mem,cmd --sort=-%cpu 2>/dev/null | head -n 15 | sanitize_pre)
 tg_send "<b>📝 Top CPU processes</b><pre>$PS_SHOW</pre>"
 
-docker_report
+extra_monitoring
+
+if [[ "$MONITOR_DOCKER" == "1" ]]; then
+  docker_report
+fi
 
 exit 0

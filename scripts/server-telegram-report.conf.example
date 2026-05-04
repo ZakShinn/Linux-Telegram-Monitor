@@ -12,4 +12,27 @@ TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
 # Tùy chọn:
 # TZ="Asia/Ho_Chi_Minh"
 # CURL_TIMEOUT=60
-# INSTALL_MISSING_DEPS=1    # thử apt-get/dnf cài curl v.v. nếu thiếu (1=mặc định)
+# INSTALL_MISSING_DEPS=1    # thử apt-get/dnf cài curl, iproute2 (ss/ip), v.v. (1=mặc định)
+#
+# Theo dõi bổ sung (sau “Top CPU”, trước Docker) — 1=bật, 0=tắt:
+# MONITOR_LAST_BOOT=1       # who -b (lần boot gần nhất)
+# MONITOR_SYSTEMD_FAILED=1 # systemctl list-units --failed
+# MONITOR_DF_ALL=1          # df -hT (mọi filesystem)
+# MONITOR_INODES=1          # df -ih
+# MONITOR_MEMINFO=1         # vài dòng /proc/meminfo (RAM/Swap)
+# MONITOR_LISTEN_PORTS=1    # ss -tuln
+# MONITOR_IP_BRIEF=1        # ip -br a
+# MONITOR_DOCKER=1          # báo cáo Docker (tắt nếu máy không dùng container)
+# — Chỉ khi MONITOR_DOCKER=1 và có quyền docker.socket:
+# MONITOR_DOCKER_SYSTEM_DF=1   # docker system df (dung lượng image/container/cache)
+# MONITOR_DOCKER_HEALTH=1     # container unhealthy (healthcheck)
+# MONITOR_DOCKER_COMPOSE=0    # docker compose ls -a
+# MONITOR_DOCKER_NETWORKS=0   # docker network ls
+#
+# Nâng cao:
+# MONITOR_ZOMBIES=1         # đếm zombie trong tin tóm tắt đầu
+# MONITOR_DISK_ALERT=1      # cảnh báo thêm nếu mount /dev/* ≥ % (xem DISK_ALERT_PERCENT)
+# DISK_ALERT_PERCENT=90
+# MONITOR_TLS_CERTS=0       # 1 = đọc /etc/letsencrypt/live/*/cert.pem (openssl), còn N ngày
+# CERT_WARN_DAYS=30         # vẫn liệt kê hết hạn; nhấn mạnh cert sắp hết trong N ngày
+# MONITOR_JOURNAL_ERR=0     # 1 = journalctl err…alert (~35 dòng, có thể dài)

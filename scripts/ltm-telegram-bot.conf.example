@@ -1,0 +1,23 @@
+# Bot lệnh Telegram — chỉ Chat ID khớp mới được điều khiển
+# Có thể chỉ nguồn token từ file báo cáo:
+#   source /etc/server-telegram-report.conf
+
+TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
+
+# Cho phép lệnh từ xa (1=bật)
+ALLOW_REMOTE_REPORT=1
+ALLOW_REMOTE_UPDATE=0
+
+# Đường dẫn script (sau install.sh)
+PATH_REPORT="/usr/local/bin/server-telegram-report"
+PATH_UPDATE="/usr/local/bin/server-telegram-update"
+
+# Nếu bot chạy không phải root: để trống hoặc ví dụ SUDO_CMD="sudo -n"
+SUDO_CMD=""
+
+# Long polling (giây, tối đa 50)
+POLL_TIMEOUT=25
+
+# Timeout lệnh tóm tắt trong Telegram (/docker, /df, /quick…) — không áp cho /report
+REMOTE_CMD_TIMEOUT=35

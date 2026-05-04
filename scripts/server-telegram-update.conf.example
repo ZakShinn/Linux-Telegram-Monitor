@@ -1,0 +1,14 @@
+# Sao chép sau khi cài install.sh:
+#   sudo cp /usr/local/share/linux-telegram-monitor/server-telegram-update.conf.example /etc/server-telegram-update.conf
+#   sudo chmod 600 /etc/server-telegram-update.conf
+#
+# TELEGRAM_BOT_TOKEN — @BotFather
+# TELEGRAM_CHAT_ID   — getUpdates
+
+TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
+
+# Tùy chọn:
+# SEND_LOG_AS_DOCUMENT=1    # gửi file log đính kèm
+# REBOOT_IF_REQUIRED=0        # 1 = tự reboot khi có /var/run/reboot-required (cẩn thận)
+# RUN_FWUPD=1                 # 1 = fwupdmgr refresh + update nếu có lệnh
