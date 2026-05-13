@@ -156,6 +156,7 @@ interactive_configure() {
   local R_BOOT=1 R_SYSTEMD=1 R_DF=1 R_INODE=1 R_MEM=1 R_SS=1 R_IP=1
   local R_DISKA=1 R_ZOMB=1 R_TLS=0 R_JRNL=0
   local R_DOCKER_DF=1 R_DOCKER_HL=1 R_DOCKER_COMPOSE=0 R_DOCKER_NET=0
+  local B_ALLOW_REPORT=1 B_ALLOW_UPDATE=1
 
   echo ""
   echo "======== Tuy chon tinh nang (Enter = chu in HOA trong [Y/n]) ========"
@@ -207,6 +208,11 @@ interactive_configure() {
   fi
 
   echo ""
+  echo "-- Telegram bot command control (ltm-bot) --"
+  _prompt_yes "  Bat dieu khien lenh tu Telegram (/report, /status)?" y && B_ALLOW_REPORT=1 || B_ALLOW_REPORT=0
+  _prompt_yes "  Bat lenh /update tu Telegram? (can than voi quyen root)" y && B_ALLOW_UPDATE=1 || B_ALLOW_UPDATE=0
+
+  echo ""
   if ! _prompt_yes "Ghi cac tuy chon tren vao /etc/*.conf?" y; then
     echo "Da bo qua ghi file. Mau van o: $SHARE/"
     return 0
@@ -251,7 +257,7 @@ interactive_configure() {
     TG_CHAT_REP="$TG_CHAT_UPD"
   fi
 
-  local write_update=1 write_report=1
+  local write_update=1 write_report=1 write_bot=1
   if [[ -f /etc/server-telegram-update.conf ]]; then
     if ! _prompt_yes "  Ghi de /etc/server-telegram-update.conf da ton tai?" n; then
       write_update=0
@@ -260,6 +266,11 @@ interactive_configure() {
   if [[ -f /etc/server-telegram-report.conf ]]; then
     if ! _prompt_yes "  Ghi de /etc/server-telegram-report.conf da ton tai?" n; then
       write_report=0
+    fi
+  fi
+  if [[ -f /etc/ltm-telegram-bot.conf ]]; then
+    if ! _prompt_yes "  Ghi de /etc/ltm-telegram-bot.conf da ton tai?" n; then
+      write_bot=0
     fi
   fi
 
@@ -309,12 +320,30 @@ interactive_configure() {
     echo "Da tao /etc/server-telegram-report.conf"
   fi
 
+  if [[ "$write_bot" -eq 1 ]]; then
+    {
+      echo "# Sinh boi install.sh - sudo chmod 600 /etc/ltm-telegram-bot.conf"
+      printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TG_TOKEN_REP"
+      printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT_REP"
+      echo "ALLOW_REMOTE_REPORT=$B_ALLOW_REPORT"
+      echo "ALLOW_REMOTE_UPDATE=$B_ALLOW_UPDATE"
+      echo "PATH_REPORT=\"${BIN}/server-telegram-report\""
+      echo "PATH_UPDATE=\"${BIN}/server-telegram-update\""
+      echo "SUDO_CMD=\"\""
+      echo "POLL_TIMEOUT=25"
+      echo "REMOTE_CMD_TIMEOUT=35"
+    } >/etc/ltm-telegram-bot.conf
+    chmod 600 /etc/ltm-telegram-bot.conf
+    echo "Da tao /etc/ltm-telegram-bot.conf"
+  fi
+
   echo ""
   if [[ "$TG_TOKEN_UPD" =~ ^YOUR_ ]] || [[ "$TG_CHAT_UPD" =~ ^YOUR_ ]] || [[ "$TG_TOKEN_REP" =~ ^YOUR_ ]] || [[ "$TG_CHAT_REP" =~ ^YOUR_ ]]; then
     echo "Chua nhap token/chat that - chinh: sudo nano /etc/server-telegram-update.conf"
     echo "                                      sudo nano /etc/server-telegram-report.conf"
+    echo "                                      sudo nano /etc/ltm-telegram-bot.conf"
   else
-    echo "Da ghi token/chat vao 2 file /etc - kiem tra lai quyen: chmod 600 /etc/server-telegram-*.conf"
+    echo "Da ghi token/chat vao cac file /etc - kiem tra lai quyen: chmod 600 /etc/server-telegram-*.conf /etc/ltm-telegram-bot.conf"
   fi
 }
 

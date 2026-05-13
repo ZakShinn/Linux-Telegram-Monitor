@@ -44,6 +44,12 @@ fi
 
 API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 OFFSET=0
+declare -a PENDING_LABELS=()
+declare -a PENDING_EXES=()
+
+net_ok() {
+  curl -fsS --max-time 6 "${API}/getMe" >/dev/null 2>&1
+}
 
 send_msg() {
   local text=$1
@@ -69,6 +75,22 @@ send_pre_trunc() {
     --data-urlencode "parse_mode=HTML" \
     --data-urlencode "text=<b>${title}</b><pre>${esc}</pre>" \
     --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1 || true
+}
+
+sync_bot_commands() {
+  # Xoa command cu truoc, roi set lai command list moi.
+  curl -fsS --max-time 20 -X POST "${API}/deleteMyCommands" >/dev/null 2>&1 || true
+  curl -fsS --max-time 25 -X POST "${API}/setMyCommands" \
+    --data-urlencode 'commands=[
+      {"command":"help","description":"Danh sach lenh"},
+      {"command":"ping","description":"Kiem tra bot online"},
+      {"command":"report","description":"Chay bao cao day du"},
+      {"command":"update","description":"Chay cap nhat he thong"},
+      {"command":"quick","description":"Thong tin nhanh server"},
+      {"command":"docker","description":"Danh sach container"},
+      {"command":"df","description":"Dung luong filesystem"},
+      {"command":"mem","description":"Thong tin RAM"}
+    ]' >/dev/null 2>&1 || true
 }
 
 _help_report_gate_msg() {
@@ -131,6 +153,10 @@ Chỉ <b>Chat ID</b> đã cấu hình được điều khiển."
 run_script() {
   local label=$1
   local exe=$2
+  if [[ ! -x "$exe" ]]; then
+    send_msg "❌ Khong tim thay script: <code>${exe}</code>"
+    return 0
+  fi
   send_msg "⏳ Đã gọi <code>${label}</code>. Kết quả sẽ gửi qua các tin riêng (nếu script cấu hình Telegram)."
   if [[ -n "${SUDO_CMD:-}" ]]; then
     # shellcheck disable=SC2086
@@ -138,6 +164,28 @@ run_script() {
   else
     "$exe" &
   fi
+}
+
+queue_remote_job() {
+  local label=$1 exe=$2
+  PENDING_LABELS+=("$label")
+  PENDING_EXES+=("$exe")
+}
+
+process_pending_jobs() {
+  local n i
+  n=${#PENDING_EXES[@]}
+  [[ "$n" -gt 0 ]] || return 0
+  net_ok || return 0
+
+  send_msg "🌐 Mạng đã ổn lại. Đang chạy lại <b>${n}</b> lệnh đã xếp hàng..."
+  local labels=("${PENDING_LABELS[@]}")
+  local exes=("${PENDING_EXES[@]}")
+  PENDING_LABELS=()
+  PENDING_EXES=()
+  for ((i = 0; i < ${#exes[@]}; i++)); do
+    run_script "${labels[$i]}" "${exes[$i]}"
+  done
 }
 
 normalize_cmd() {
@@ -267,8 +315,9 @@ EOS
       send_msg "⛔ Lệnh <code>/report</code> bị tắt (ALLOW_REMOTE_REPORT=0)."
       return 0
     fi
-    if [[ ! -x "$PATH_REPORT" ]]; then
-      send_msg "❌ Không thấy script: <code>${PATH_REPORT}</code>"
+    if ! net_ok; then
+      queue_remote_job "$(basename "$PATH_REPORT")" "$PATH_REPORT"
+      send_msg "🌐 Dang mat mang. Da xep hang lenh <code>/report</code>, se tu chay lai khi co mang."
       return 0
     fi
     run_script "$(basename "$PATH_REPORT")" "$PATH_REPORT"
@@ -278,8 +327,9 @@ EOS
       send_msg "⛔ Lệnh <code>/update</code> bị tắt. Bật ALLOW_REMOTE_UPDATE=1 trong <code>${CONF_BOT}</code> (rủi ro cao)."
       return 0
     fi
-    if [[ ! -x "$PATH_UPDATE" ]]; then
-      send_msg "❌ Không thấy script: <code>${PATH_UPDATE}</code>"
+    if ! net_ok; then
+      queue_remote_job "$(basename "$PATH_UPDATE")" "$PATH_UPDATE"
+      send_msg "🌐 Dang mat mang. Da xep hang lenh <code>/update</code>, se tu chay lai khi co mang."
       return 0
     fi
     run_script "$(basename "$PATH_UPDATE")" "$PATH_UPDATE"
@@ -291,9 +341,11 @@ EOS
 }
 
 # --- vòng lặp long polling ---
+sync_bot_commands
 send_msg "🤖 <b>ltm-bot</b> đã chạy — chỉ chấp nhận Chat ID đã cấu hình."
 
 while true; do
+  process_pending_jobs || true
   resp=$(curl -fsS --max-time $((POLL_TIMEOUT + 15)) \
     "${API}/getUpdates?offset=${OFFSET}&timeout=${POLL_TIMEOUT}" 2>/dev/null) || {
     sleep 5

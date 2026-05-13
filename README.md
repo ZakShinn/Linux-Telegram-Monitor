@@ -45,8 +45,12 @@ Wizard cài đặt sẽ hỏi:
 - ngôn ngữ mặc định cho `ltm-report` (**Việt** hoặc **Anh**),
 - profile `basic/advanced`,
 - dùng **cùng bot/chat** cho update + report hay tách riêng,
+- bật điều khiển bot từ Telegram (`/report`, `/status`) — mặc định **bật**,
+- bật lệnh `/update` từ bot — mặc định **bật**,
 - ghi config vào `/etc`,
 - lịch chạy: mặc định `ltm-report` mỗi **15 phút**, `ltm-update` mỗi ngày **00:00** (có thể đổi ngay lúc cài).
+
+Install script cũng tạo luôn `/etc/ltm-telegram-bot.conf` (nếu cho phép ghi), gồm `ALLOW_REMOTE_REPORT` và `ALLOW_REMOTE_UPDATE` theo lựa chọn ở wizard.
 
 #### 3) Cài không tương tác (CI/automation)
 
@@ -216,8 +220,12 @@ Install wizard asks for:
 - default language for `ltm-report` (**Vietnamese** or **English**),
 - profile `basic/advanced`,
 - whether update/report should share the same Telegram bot/chat or use separate credentials,
+- whether to enable Telegram bot command control (`/report`, `/status`) — default **enabled**,
+- whether to enable `/update` from Telegram bot — default **enabled**,
 - write config into `/etc`,
 - schedule setup: default `ltm-report` every **15 minutes**, `ltm-update` daily at **00:00** (editable during install).
+
+Installer also generates `/etc/ltm-telegram-bot.conf` (when writing config is allowed), including `ALLOW_REMOTE_REPORT` and `ALLOW_REMOTE_UPDATE` from your wizard choices.
 
 #### 3) Non-interactive install (CI/automation)
 

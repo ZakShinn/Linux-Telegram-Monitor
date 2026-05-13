@@ -40,6 +40,12 @@ fi
 
 API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 OFFSET=0
+declare -a PENDING_LABELS=()
+declare -a PENDING_EXES=()
+
+net_ok() {
+  curl -fsS --max-time 6 "${API}/getMe" >/dev/null 2>&1
+}
 
 send_msg() {
   local text=$1
@@ -65,6 +71,22 @@ send_pre_trunc() {
     --data-urlencode "parse_mode=HTML" \
     --data-urlencode "text=<b>${title}</b><pre>${esc}</pre>" \
     --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1 || true
+}
+
+sync_bot_commands() {
+  # Remove existing commands first, then publish the latest list.
+  curl -fsS --max-time 20 -X POST "${API}/deleteMyCommands" >/dev/null 2>&1 || true
+  curl -fsS --max-time 25 -X POST "${API}/setMyCommands" \
+    --data-urlencode 'commands=[
+      {"command":"help","description":"Show command list"},
+      {"command":"ping","description":"Bot health check"},
+      {"command":"report","description":"Run full report"},
+      {"command":"update","description":"Run system update"},
+      {"command":"quick","description":"Quick server snapshot"},
+      {"command":"docker","description":"List containers"},
+      {"command":"df","description":"Filesystem usage"},
+      {"command":"mem","description":"Memory summary"}
+    ]' >/dev/null 2>&1 || true
 }
 
 _help_report_gate_msg() {
@@ -127,6 +149,10 @@ Only configured <b>Chat ID</b> can control this bot."
 run_script() {
   local label=$1
   local exe=$2
+  if [[ ! -x "$exe" ]]; then
+    send_msg "❌ Script not found: <code>${exe}</code>"
+    return 0
+  fi
   send_msg "⏳ Started <code>${label}</code>. Results will be sent by the script itself."
   if [[ -n "${SUDO_CMD:-}" ]]; then
     # shellcheck disable=SC2086
@@ -134,6 +160,28 @@ run_script() {
   else
     "$exe" &
   fi
+}
+
+queue_remote_job() {
+  local label=$1 exe=$2
+  PENDING_LABELS+=("$label")
+  PENDING_EXES+=("$exe")
+}
+
+process_pending_jobs() {
+  local n i
+  n=${#PENDING_EXES[@]}
+  [[ "$n" -gt 0 ]] || return 0
+  net_ok || return 0
+
+  send_msg "🌐 Network is back. Re-running <b>${n}</b> queued command(s)..."
+  local labels=("${PENDING_LABELS[@]}")
+  local exes=("${PENDING_EXES[@]}")
+  PENDING_LABELS=()
+  PENDING_EXES=()
+  for ((i = 0; i < ${#exes[@]}; i++)); do
+    run_script "${labels[$i]}" "${exes[$i]}"
+  done
 }
 
 normalize_cmd() {
@@ -262,8 +310,9 @@ EOS
       send_msg "⛔ <code>/report</code> is disabled (ALLOW_REMOTE_REPORT=0)."
       return 0
     fi
-    if [[ ! -x "$PATH_REPORT" ]]; then
-      send_msg "❌ Script not found: <code>${PATH_REPORT}</code>"
+    if ! net_ok; then
+      queue_remote_job "$(basename "$PATH_REPORT")" "$PATH_REPORT"
+      send_msg "🌐 Network is unavailable. Queued <code>/report</code>; it will run automatically when network is back."
       return 0
     fi
     run_script "$(basename "$PATH_REPORT")" "$PATH_REPORT"
@@ -273,8 +322,9 @@ EOS
       send_msg "⛔ <code>/update</code> is disabled. Set ALLOW_REMOTE_UPDATE=1 in <code>${CONF_BOT}</code> (high risk)."
       return 0
     fi
-    if [[ ! -x "$PATH_UPDATE" ]]; then
-      send_msg "❌ Script not found: <code>${PATH_UPDATE}</code>"
+    if ! net_ok; then
+      queue_remote_job "$(basename "$PATH_UPDATE")" "$PATH_UPDATE"
+      send_msg "🌐 Network is unavailable. Queued <code>/update</code>; it will run automatically when network is back."
       return 0
     fi
     run_script "$(basename "$PATH_UPDATE")" "$PATH_UPDATE"
@@ -285,9 +335,11 @@ EOS
   esac
 }
 
+sync_bot_commands
 send_msg "🤖 <b>ltm-bot</b> started — only configured Chat ID is accepted."
 
 while true; do
+  process_pending_jobs || true
   resp=$(curl -fsS --max-time $((POLL_TIMEOUT + 15)) \
     "${API}/getUpdates?offset=${OFFSET}&timeout=${POLL_TIMEOUT}" 2>/dev/null) || {
     sleep 5
