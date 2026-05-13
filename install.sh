@@ -58,17 +58,24 @@ select_install_lang
 if [[ "$INSTALL_LANG" == "en" ]]; then
   install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update-en.sh" "$BIN/server-telegram-update"
   install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report-en.sh" "$BIN/server-telegram-report"
+  install -m 755 "$SCRIPT_DIR/scripts/ltm-telegram-bot-en.sh" "$BIN/ltm-bot"
+  install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule-en.sh" "$BIN/ltm-schedule"
 else
   install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update.sh" "$BIN/server-telegram-update"
   install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report.sh" "$BIN/server-telegram-report"
+  install -m 755 "$SCRIPT_DIR/scripts/ltm-telegram-bot.sh" "$BIN/ltm-bot"
+  install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule.sh" "$BIN/ltm-schedule"
 fi
-
-install -m 755 "$SCRIPT_DIR/scripts/ltm-telegram-bot.sh" "$BIN/ltm-bot"
-install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule.sh" "$BIN/ltm-schedule"
 
 ln -sf server-telegram-update "$BIN/ltm-update"
 ln -sf server-telegram-report "$BIN/ltm-report"
-rm -f -- "$BIN/ltm-report-en" "$BIN/server-telegram-report-en" "$BIN/server-telegram-update-en" 2>/dev/null || true
+rm -f -- \
+  "$BIN/ltm-report-en" \
+  "$BIN/server-telegram-report-en" \
+  "$BIN/server-telegram-update-en" \
+  "$BIN/ltm-telegram-bot-en" \
+  "$BIN/ltm-schedule-en" \
+  2>/dev/null || true
 
 # Một số máy có sudo secure_path không chứa /usr/local/bin.
 # Tạo symlink tương thích ở /usr/bin (nếu cài thật, không dùng DESTDIR) để gọi được qua sudo.

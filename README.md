@@ -22,7 +22,7 @@ Bộ script cho **Debian/Ubuntu** để:
 
 - **`ltm-update`**: `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`, tùy chọn `fwupdmgr`, gửi báo cáo Telegram, có thể tự reboot khi `/var/run/reboot-required`.
 - **`ltm-report`**: báo cáo tài nguyên hệ thống, Docker, và các khối theo dõi mở rộng cho Debian/Ubuntu.
-- **Ngôn ngữ cài đặt**: chọn `vi` hoặc `en` khi cài; script chỉ cài 1 bộ ngôn ngữ tương ứng.
+- **Ngôn ngữ cài đặt**: chọn `vi` hoặc `en` khi cài; script chỉ cài 1 bộ ngôn ngữ tương ứng cho `ltm-update`, `ltm-report`, `ltm-bot`, `ltm-schedule`.
 - **`ltm-bot`**: bot Telegram lấy báo cáo/lệnh nhanh.
 - **`ltm-schedule`**: quản lý cron trong `/etc/cron.d/linux-telegram-monitor`.
 
@@ -193,7 +193,7 @@ Scripts for **Debian/Ubuntu** to:
 
 - **`ltm-update`**: runs `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`; optional `fwupdmgr`; sends Telegram update summary; optional reboot on `/var/run/reboot-required`.
 - **`ltm-report`**: system resource reporting with optional Docker and extended Debian/Ubuntu monitoring blocks.
-- **Install language**: choose `vi` or `en` during install; only one language pack is installed.
+- **Install language**: choose `vi` or `en` during install; only one language pack is installed for `ltm-update`, `ltm-report`, `ltm-bot`, and `ltm-schedule`.
 - **`ltm-bot`**: Telegram bot for quick report/diagnostic commands.
 - **`ltm-schedule`**: cron manager for `/etc/cron.d/linux-telegram-monitor`.
 
