@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# linux-telegram-monitor — ghi /etc/cron.d/linux-telegram-monitor cho ltm-report / ltm-update
+# linux-telegram-monitor - ghi /etc/cron.d/linux-telegram-monitor cho ltm-report / ltm-update
 #
 #   sudo ltm-schedule                 # wizard tùy chọn giờ
-#   sudo ltm-schedule defaults        # báo 15 phút/lần + cập nhật hằng ngày 00:00
+#   sudo ltm-schedule defaults        # bao 15 phut/lan + cap nhat hang ngay 00:00
 #   sudo ltm-schedule apply --report 15m --update daily [--update-hour 0]
 #   sudo ltm-schedule apply --report-off --update off
 #   sudo ltm-schedule show
@@ -22,7 +22,7 @@ resolve_update_bin() {
 
 require_root() {
   if [[ "$(id -u)" -ne 0 ]]; then
-    echo "Chạy với sudo (cần ghi $CROND)." >&2
+    echo "Chay voi sudo (can ghi $CROND)." >&2
     exit 1
   fi
 }
@@ -50,13 +50,13 @@ report_to_cron() {
     printf '0 %s * * *' "$hh"
     ;;
   *)
-    echo "--report chỉ nhận: off | 30m | 1h | … | 12h | daily:H ($rep)." >&2
+    echo "--report chi nhan: off | 15m | 30m | 1h | ... | 12h | daily:H ($rep)." >&2
     exit 1
     ;;
   esac
 }
 
-# weekly:hod — CN=0; daily:hod
+# weekly:hod - CN=0; daily:hod
 update_to_cron() {
   local mode=${1,,} hod=$2
   hod="${hod//[^0-9]/}"
@@ -67,7 +67,7 @@ update_to_cron() {
   weekly) printf '0 %s * * 0' "$hod" ;;
   daily) printf '0 %s * * *' "$hod" ;;
   *)
-    echo "--update chỉ nhận: off | weekly | daily." >&2
+    echo "--update chi nhan: off | weekly | daily." >&2
     exit 1
     ;;
   esac
@@ -80,7 +80,7 @@ write_crond() {
 
   if [[ -z "${rex//[:space:]/}" ]] && [[ -z "${uex//[:space:]/}" ]]; then
     rm -f -- "$CROND"
-    echo "Không còn tác vụ — đã xoá $CROND (nếu có)."
+    echo "Khong con tac vu - da xoa $CROND (neu co)."
     return 0
   fi
 
@@ -88,7 +88,7 @@ write_crond() {
 
   {
     cat <<-'CRONEOF'
-# linux-telegram-monitor — đặt bằng: sudo ltm-schedule ...
+# linux-telegram-monitor - dat bang: sudo ltm-schedule ...
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 SHELL=/bin/bash
 
@@ -103,22 +103,22 @@ CRONEOF
   printf '\n' >>"$tf"
   chmod 0644 "$tf"
   mv -f -- "$tf" "$CROND"
-  echo "Đã ghi $CROND"
+  echo "Da ghi $CROND"
 }
 
 wizard() {
   require_root
   local rex="" uex="" ch hh rep up_rep opt
 
-  echo "══ Báo cáo (ltm-report) ══"
-  echo "  0 — Tắt"
-  echo "  1 — 15 phút (mặc định)"
-  echo "  2 — 30 phút"
-  echo "  3 — Mỗi giờ"
-  echo "  4 — Mỗi 6 giờ"
-  echo "  5 — Mỗi 12 giờ"
-  echo "  6 — Mỗi ngày một lần"
-  read -r -p "Chọn [0–6], Enter = 1: " ch </dev/tty || true
+  echo "== Bao cao (ltm-report) =="
+  echo "  0 - Tat"
+  echo "  1 - 15 phut (mac dinh)"
+  echo "  2 - 30 phut"
+  echo "  3 - Moi gio"
+  echo "  4 - Moi 6 gio"
+  echo "  5 - Moi 12 gio"
+  echo "  6 - Moi ngay mot lan"
+  read -r -p "Chon [0-6], Enter = 1: " ch </dev/tty || true
   ch="${ch:-1}"
 
   rep=15m
@@ -130,7 +130,7 @@ wizard() {
   4) rep="6h" ;;
   5) rep="12h" ;;
   6)
-    read -r -p "Giờ (0–23), Enter = 8: " hh </dev/tty || true
+    read -r -p "Gio (0-23), Enter = 8: " hh </dev/tty || true
     hh="${hh:-8}"
     hh="${hh//[^0-9]/}"
     [[ -z "$hh" ]] && hh=8
@@ -143,35 +143,35 @@ wizard() {
   rex=$(report_to_cron "$rep")
 
   echo ""
-  echo "══ Cập nhật gói (ltm-update) ══"
-  echo "  0 — Tắt (chạy tay khi cần)"
-  echo "  1 — Mỗi ngày (mặc định)"
-  echo "  2 — Tuần: Chủ Nhật"
-  read -r -p "Chọn [0–2], Enter = 1: " ch </dev/tty || true
+  echo "== Cap nhat goi (ltm-update) =="
+  echo "  0 - Tat (chay tay khi can)"
+  echo "  1 - Moi ngay (mac dinh)"
+  echo "  2 - Tuan: Chu Nhat"
+  read -r -p "Chon [0-2], Enter = 1: " ch </dev/tty || true
   ch="${ch:-1}"
 
   uex=""
   case "${ch:-1}" in
   0) uex="" ;;
   1)
-    read -r -p "Giờ mỗi ngày (0–23), Enter = 0: " opt </dev/tty || true
+    read -r -p "Gio moi ngay (0-23), Enter = 0: " opt </dev/tty || true
     opt="${opt:-0}"
     uex="$(update_to_cron daily "${opt}")"
     ;;
   2)
-    read -r -p "Giờ CN (0–23), Enter = 3: " opt </dev/tty || true
+    read -r -p "Gio CN (0-23), Enter = 3: " opt </dev/tty || true
     opt="${opt:-3}"
     uex="$(update_to_cron weekly "${opt}")"
     ;;
   *)
-    read -r -p "Giờ mỗi ngày (0–23), Enter = 4: " opt </dev/tty || true
+    read -r -p "Gio moi ngay (0-23), Enter = 0: " opt </dev/tty || true
     opt="${opt:-0}"
     uex="$(update_to_cron daily "${opt}")"
     ;;
   esac
 
   write_crond "$rex" "$uex"
-  echo "Xem: sudo ltm-schedule show — Xóa lịch: sudo ltm-schedule remove"
+  echo "Xem: sudo ltm-schedule show - Xoa lich: sudo ltm-schedule remove"
 }
 
 cmd_defaults() {
@@ -181,7 +181,7 @@ cmd_defaults() {
 
 cmd_show() {
   if [[ ! -f "$CROND" ]]; then
-    echo "(chưa có lịch) Chạy: sudo ltm-schedule hoặc sudo ltm-schedule defaults"
+    echo "(chua co lich) Chay: sudo ltm-schedule hoac sudo ltm-schedule defaults"
     return 0
   fi
   cat "$CROND"
@@ -190,12 +190,12 @@ cmd_show() {
 cmd_remove() {
   require_root
   rm -f -- "$CROND"
-  echo "Đã xoá $CROND."
+  echo "Da xoa $CROND."
 }
 
 usage() {
-  echo "sudo ltm-schedule              Wizard chọn kiểu gửi báo/cập nhật"
-  echo "sudo ltm-schedule defaults     Gợi ý: báo 15 phút, cập nhật mỗi ngày 00:00"
+  echo "sudo ltm-schedule              Wizard chon kieu gui bao/cap nhat"
+  echo "sudo ltm-schedule defaults     Goi y: bao 15 phut, cap nhat moi ngay 00:00"
   echo "sudo ltm-schedule apply --report 15m|6h|30m|12h|off|daily:N --update weekly|daily|off [--update-hour H]"
   echo "sudo ltm-schedule show | remove"
 }
@@ -207,7 +207,7 @@ cmd_apply() {
     case "$1" in
     --report)
       [[ $# -lt 2 ]] && {
-        echo "Thiếu giá trị sau --report" >&2
+        echo "Thieu gia tri sau --report" >&2
         exit 1
       }
       rep=$2
@@ -219,7 +219,7 @@ cmd_apply() {
       ;;
     --update)
       [[ $# -lt 2 ]] && {
-        echo "Thiếu giá trị sau --update" >&2
+        echo "Thieu gia tri sau --update" >&2
         exit 1
       }
       up=$2
@@ -231,14 +231,14 @@ cmd_apply() {
       ;;
     --update-hour | --hour)
       [[ $# -lt 2 ]] && {
-        echo "Thiếu giá trị sau --update-hour" >&2
+        echo "Thieu gia tri sau --update-hour" >&2
         exit 1
       }
       uh=$2
       shift 2
       ;;
     *)
-      echo "Không nhận: $1 — sudo ltm-schedule help" >&2
+      echo "Khong nhan: $1 - sudo ltm-schedule help" >&2
       exit 1
       ;;
     esac
@@ -250,7 +250,7 @@ cmd_apply() {
   weekly) ux="$(update_to_cron weekly "$uh")" ;;
   daily) ux="$(update_to_cron daily "$uh")" ;;
   *)
-    echo "--update chỉ: off | weekly | daily ($up)." >&2
+    echo "--update chi: off | weekly | daily ($up)." >&2
     exit 1
     ;;
   esac
@@ -279,7 +279,7 @@ main() {
     usage
     ;;
   *)
-    echo "Lệnh không rõ: ${1:-}. Gõ: sudo ltm-schedule help" >&2
+    echo "Lenh khong ro: ${1:-}. Go: sudo ltm-schedule help" >&2
     exit 1
     ;;
   esac
