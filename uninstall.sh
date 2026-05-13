@@ -70,11 +70,23 @@ echo "→ Xoá lệnh cài và symlink…"
 rm -f -- "$BIN/ltm-update" "$BIN/ltm-report" "$BIN/ltm-report-en" 2>/dev/null || true
 rm -f -- \
   "$BIN/server-telegram-update" \
+  "$BIN/server-telegram-update-en" \
   "$BIN/server-telegram-report" \
   "$BIN/server-telegram-report-en" \
   "$BIN/ltm-bot" \
   "$BIN/ltm-schedule" \
   2>/dev/null || true
+
+# Dọn symlink tương thích /usr/bin nếu install.sh đã tạo.
+if [[ -z "$DESTDIR" ]] && [[ "$PREFIX" == "/usr/local" ]]; then
+  rm -f -- \
+    /usr/bin/ltm-update \
+    /usr/bin/ltm-report \
+    /usr/bin/ltm-report-en \
+    /usr/bin/ltm-bot \
+    /usr/bin/ltm-schedule \
+    2>/dev/null || true
+fi
 
 if [[ -z "$DESTDIR" ]] && [[ -f /etc/cron.d/linux-telegram-monitor ]]; then
   rm -f -- /etc/cron.d/linux-telegram-monitor

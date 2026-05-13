@@ -5,7 +5,7 @@
 #
 # Tự động bỏ qua hỏi tuỳ chọn: SKIP_INSTALL_PROMPTS=1 hoặc không có TTY (cron/pipe)
 # Kiểu cấu hình (chỉ khi có TTY): LTM_INSTALL_PROFILE=basic|advanced — bỏ qua menu chọn 1/2
-# Lịch cron sau cài khi không hỏi: LTM_INSTALL_CRON=default (báo ~6 giờ + cập nhật CN)
+# Lịch cron sau cài khi không hỏi: LTM_INSTALL_CRON=default (báo 15 phút + cập nhật mỗi ngày 00:00)
 # Ngôn ngữ mặc định cho ltm-report: LTM_INSTALL_REPORT_LANG=vi|en (mặc định: vi)
 # Chỉ tạo file trong DESTDIR (đóng gói): không ghi /etc
 
@@ -25,29 +25,64 @@ fi
 install -d -m 755 "$BIN"
 install -d -m 755 "$SHARE"
 
-install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update.sh" "$BIN/server-telegram-update"
-install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report.sh" "$BIN/server-telegram-report"
-install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report-en.sh" "$BIN/server-telegram-report-en"
+INSTALL_LANG="${LTM_INSTALL_REPORT_LANG:-}"
+select_install_lang() {
+  if [[ -z "$INSTALL_LANG" ]]; then
+    INSTALL_LANG="vi"
+  fi
+  case "$INSTALL_LANG" in
+    vi|vn|VI|VN) INSTALL_LANG="vi" ;;
+    en|EN) INSTALL_LANG="en" ;;
+    *)
+      echo "LTM_INSTALL_REPORT_LANG không hợp lệ ($INSTALL_LANG), dùng vi." >&2
+      INSTALL_LANG="vi"
+      ;;
+  esac
+
+  if [[ "${SKIP_INSTALL_PROMPTS:-0}" != "1" ]] && [[ -t 0 ]] && [[ -c /dev/tty ]] && [[ -z "${LTM_INSTALL_REPORT_LANG:-}" ]]; then
+    echo ""
+    echo "════════ Chọn ngôn ngữ cài đặt / installation language ════════"
+    echo "  1) Tiếng Việt (ltm-update + ltm-report)"
+    echo "  2) English (ltm-update + ltm-report in English)"
+    local lc
+    read -r -p "Nhập 1 hoặc 2 [Enter = 1]: " lc </dev/tty || true
+    case "${lc:-1}" in
+      2) INSTALL_LANG="en" ;;
+      *) INSTALL_LANG="vi" ;;
+    esac
+  fi
+}
+
+select_install_lang
+
+if [[ "$INSTALL_LANG" == "en" ]]; then
+  install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update-en.sh" "$BIN/server-telegram-update"
+  install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report-en.sh" "$BIN/server-telegram-report"
+else
+  install -m 755 "$SCRIPT_DIR/scripts/server-telegram-update.sh" "$BIN/server-telegram-update"
+  install -m 755 "$SCRIPT_DIR/scripts/server-telegram-report.sh" "$BIN/server-telegram-report"
+fi
+
 install -m 755 "$SCRIPT_DIR/scripts/ltm-telegram-bot.sh" "$BIN/ltm-bot"
 install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule.sh" "$BIN/ltm-schedule"
 
 ln -sf server-telegram-update "$BIN/ltm-update"
-ln -sf server-telegram-report-en "$BIN/ltm-report-en"
+ln -sf server-telegram-report "$BIN/ltm-report"
+rm -f -- "$BIN/ltm-report-en" "$BIN/server-telegram-report-en" "$BIN/server-telegram-update-en" 2>/dev/null || true
 
-set_report_lang() {
-  local lang="${1:-vi}"
-  case "$lang" in
-    en|EN)
-      ln -sf server-telegram-report-en "$BIN/ltm-report"
-      ;;
-    vi|VI|vn|VN|*)
-      ln -sf server-telegram-report "$BIN/ltm-report"
-      ;;
-  esac
+# Một số máy có sudo secure_path không chứa /usr/local/bin.
+# Tạo symlink tương thích ở /usr/bin (nếu cài thật, không dùng DESTDIR) để gọi được qua sudo.
+install_compat_links() {
+  [[ -n "$DESTDIR" ]] && return 0
+  [[ "$PREFIX" != "/usr/local" ]] && return 0
+  [[ -d /usr/bin ]] || return 0
+
+  ln -sfn "/usr/local/bin/ltm-update" /usr/bin/ltm-update 2>/dev/null || true
+  ln -sfn "/usr/local/bin/ltm-report" /usr/bin/ltm-report 2>/dev/null || true
+  ln -sfn "/usr/local/bin/ltm-schedule" /usr/bin/ltm-schedule 2>/dev/null || true
+  ln -sfn "/usr/local/bin/ltm-bot" /usr/bin/ltm-bot 2>/dev/null || true
+  rm -f -- /usr/bin/ltm-report-en 2>/dev/null || true
 }
-
-DEFAULT_REPORT_LANG="${LTM_INSTALL_REPORT_LANG:-vi}"
-set_report_lang "$DEFAULT_REPORT_LANG"
 
 install -m 644 "$SCRIPT_DIR/scripts/server-telegram-update.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/server-telegram-report.conf.example" "$SHARE/"
@@ -88,21 +123,6 @@ interactive_configure() {
     echo "→ Không phải terminal tương tác: bỏ qua hỏi tuỳ chọn (đặt SKIP_INSTALL_PROMPTS=1 để ẩn gợi ý)." >&2
     return 0
   fi
-
-  local report_lang="${LTM_INSTALL_REPORT_LANG:-}"
-  if [[ -z "$report_lang" ]]; then
-    echo ""
-    echo "════════ Ngôn ngữ mặc định cho ltm-report ════════"
-    echo "  1) Tiếng Việt (server-telegram-report)"
-    echo "  2) English (server-telegram-report-en)"
-    local lc
-    read -r -p "Nhập 1 hoặc 2 [Enter = 1]: " lc </dev/tty || true
-    case "${lc:-1}" in
-      2) report_lang=en ;;
-      *) report_lang=vi ;;
-    esac
-  fi
-  set_report_lang "$report_lang"
 
   local profile="${LTM_INSTALL_PROFILE:-}"
   if [[ -z "$profile" ]]; then
@@ -183,16 +203,43 @@ interactive_configure() {
     return 0
   fi
 
-  local TG_TOKEN="YOUR_BOT_TOKEN_HERE" TG_CHAT="YOUR_CHAT_ID_HERE"
+  local TG_TOKEN_UPD="YOUR_BOT_TOKEN_HERE" TG_CHAT_UPD="YOUR_CHAT_ID_HERE"
+  local TG_TOKEN_REP="YOUR_BOT_TOKEN_HERE" TG_CHAT_REP="YOUR_CHAT_ID_HERE"
+  local SAME_TG=1
   echo ""
-  if _prompt_yes "Nhập Bot Token và Chat ID ngay? (nếu Không → để placeholder, sửa sau bằng nano)" n; then
-    read -rs -p "  TELEGRAM_BOT_TOKEN (ẩn khi gõ): " TG_TOKEN </dev/tty || true
+  if _prompt_yes "Dùng cùng bot/chat Telegram cho update và report?" y; then
+    SAME_TG=1
+  else
+    SAME_TG=0
+  fi
+
+  if _prompt_yes "Nhập Telegram credentials ngay? (nếu Không → để placeholder, sửa sau bằng nano)" n; then
+    echo "  [update] Bot Token + Chat ID"
+    read -rs -p "  TELEGRAM_BOT_TOKEN (update, ẩn khi gõ): " TG_TOKEN_UPD </dev/tty || true
     echo "" >&2
-    read -rp "  TELEGRAM_CHAT_ID: " TG_CHAT </dev/tty || true
-    TG_TOKEN="${TG_TOKEN//$'\r'/}"
-    TG_CHAT="${TG_CHAT//$'\r'/}"
-    [[ -z "$TG_TOKEN" ]] && TG_TOKEN="YOUR_BOT_TOKEN_HERE"
-    [[ -z "$TG_CHAT" ]] && TG_CHAT="YOUR_CHAT_ID_HERE"
+    read -rp "  TELEGRAM_CHAT_ID (update): " TG_CHAT_UPD </dev/tty || true
+    TG_TOKEN_UPD="${TG_TOKEN_UPD//$'\r'/}"
+    TG_CHAT_UPD="${TG_CHAT_UPD//$'\r'/}"
+    [[ -z "$TG_TOKEN_UPD" ]] && TG_TOKEN_UPD="YOUR_BOT_TOKEN_HERE"
+    [[ -z "$TG_CHAT_UPD" ]] && TG_CHAT_UPD="YOUR_CHAT_ID_HERE"
+
+    if [[ "$SAME_TG" -eq 1 ]]; then
+      TG_TOKEN_REP="$TG_TOKEN_UPD"
+      TG_CHAT_REP="$TG_CHAT_UPD"
+    else
+      echo ""
+      echo "  [report] Bot Token + Chat ID"
+      read -rs -p "  TELEGRAM_BOT_TOKEN (report, ẩn khi gõ): " TG_TOKEN_REP </dev/tty || true
+      echo "" >&2
+      read -rp "  TELEGRAM_CHAT_ID (report): " TG_CHAT_REP </dev/tty || true
+      TG_TOKEN_REP="${TG_TOKEN_REP//$'\r'/}"
+      TG_CHAT_REP="${TG_CHAT_REP//$'\r'/}"
+      [[ -z "$TG_TOKEN_REP" ]] && TG_TOKEN_REP="YOUR_BOT_TOKEN_HERE"
+      [[ -z "$TG_CHAT_REP" ]] && TG_CHAT_REP="YOUR_CHAT_ID_HERE"
+    fi
+  else
+    TG_TOKEN_REP="$TG_TOKEN_UPD"
+    TG_CHAT_REP="$TG_CHAT_UPD"
   fi
 
   local write_update=1 write_report=1
@@ -212,8 +259,8 @@ interactive_configure() {
   if [[ "$write_update" -eq 1 ]]; then
     {
       echo "# Sinh bởi install.sh — sudo chmod 600 /etc/server-telegram-update.conf"
-      printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TG_TOKEN"
-      printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT"
+      printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TG_TOKEN_UPD"
+      printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT_UPD"
       echo "SEND_LOG_AS_DOCUMENT=$U_SEND"
       echo "REBOOT_IF_REQUIRED=$U_REBOOT"
       echo "RUN_FWUPD=$U_FW"
@@ -225,8 +272,8 @@ interactive_configure() {
   if [[ "$write_report" -eq 1 ]]; then
     {
       echo "# Sinh bởi install.sh — sudo chmod 600 /etc/server-telegram-report.conf"
-      printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TG_TOKEN"
-      printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT"
+      printf 'TELEGRAM_BOT_TOKEN=%q\n' "$TG_TOKEN_REP"
+      printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT_REP"
       echo 'TZ="Asia/Ho_Chi_Minh"'
       echo "CURL_TIMEOUT=60"
       echo "INSTALL_MISSING_DEPS=$R_INSTALL_DEPS"
@@ -254,7 +301,7 @@ interactive_configure() {
   fi
 
   echo ""
-  if [[ "$TG_TOKEN" =~ ^YOUR_ ]] || [[ "$TG_CHAT" =~ ^YOUR_ ]]; then
+  if [[ "$TG_TOKEN_UPD" =~ ^YOUR_ ]] || [[ "$TG_CHAT_UPD" =~ ^YOUR_ ]] || [[ "$TG_TOKEN_REP" =~ ^YOUR_ ]] || [[ "$TG_CHAT_REP" =~ ^YOUR_ ]]; then
     echo "Chưa nhập token/chat thật — chỉnh: sudo nano /etc/server-telegram-update.conf"
     echo "                                      sudo nano /etc/server-telegram-report.conf"
   else
@@ -281,20 +328,53 @@ _maybe_cron_schedule() {
     return 0
   fi
   echo ""
-  if _prompt_yes "Đặt lịch cron: báo cáo mỗi ~6 giờ, chạy cập nhật Chủ Nhật 03:00? (đổi sau: sudo ltm-schedule)" y; then
-    "$BIN/ltm-schedule" defaults </dev/null || true
+  if _prompt_yes "Thiết lập lịch cron ngay bây giờ?" y; then
+    local rep="15m" up="daily" uh="0" ch
+    echo "  Lịch báo cáo (ltm-report):"
+    echo "    0) off   1) 15m(default)  2) 30m  3) 1h  4) 2h  5) 4h  6) 6h  7) 12h"
+    read -r -p "  Chọn [0-7], Enter = 1: " ch </dev/tty || true
+    case "${ch:-1}" in
+      0) rep="off" ;;
+      1) rep="15m" ;;
+      2) rep="30m" ;;
+      3) rep="1h" ;;
+      4) rep="2h" ;;
+      5) rep="4h" ;;
+      6) rep="6h" ;;
+      7) rep="12h" ;;
+      *) rep="15m" ;;
+    esac
+
+    echo "  Lịch cập nhật (ltm-update):"
+    echo "    0) off   1) daily (default, 00:00)   2) weekly (Sunday)"
+    read -r -p "  Chọn [0-2], Enter = 1: " ch </dev/tty || true
+    case "${ch:-1}" in
+      0) up="off" ;;
+      2)
+        up="weekly"
+        read -r -p "  Giờ chạy CN (0-23), Enter = 0: " uh </dev/tty || true
+        uh="${uh:-0}"
+        ;;
+      1|*)
+        up="daily"
+        read -r -p "  Giờ chạy mỗi ngày (0-23), Enter = 0: " uh </dev/tty || true
+        uh="${uh:-0}"
+        ;;
+    esac
+    "$BIN/ltm-schedule" apply --report "$rep" --update "$up" --update-hour "$uh" </dev/null || true
   fi
 }
 
 interactive_configure
 _maybe_cron_schedule
+install_compat_links
 
 cat <<EOF
+Ngôn ngữ đã cài: ${INSTALL_LANG}
+
 Đã cài:
   $BIN/server-telegram-update   (ltm-update)
-  $BIN/server-telegram-report    (ltm-report cho tiếng Việt)
-  $BIN/server-telegram-report-en (ltm-report-en)
-  $BIN/ltm-report              → mặc định theo ngôn ngữ đã chọn khi cài
+  $BIN/server-telegram-report   (ltm-report)
   $BIN/ltm-bot                 — bot lệnh Telegram (cần jq, xem README)
   $BIN/ltm-schedule           — ghi lịch cron báo/cập nhật
 
@@ -306,7 +386,6 @@ Mẫu tham chiếu (nếu không dùng file đã tạo):
 Chạy:
   sudo server-telegram-update   hoặc   sudo ltm-update
   sudo server-telegram-report  hoặc   sudo ltm-report
-  sudo server-telegram-report-en hoặc sudo ltm-report-en
   sudo ltm-bot                  — lệnh từ Telegram (/report, /help, …)
   sudo ltm-schedule             — hoặc: sudo ltm-schedule defaults
 
@@ -315,8 +394,8 @@ Sau khi git pull bản mới:  SKIP_INSTALL_PROMPTS=1 sudo bash install.sh
 
 Tuỳ chọn môi trường:
   SKIP_INSTALL_PROMPTS=1        — không hỏi, chỉ cài binary (cron: có thể đặt LTM_INSTALL_CRON=default)
-  LTM_INSTALL_CRON=default      — chỉ có nghĩa khi kèm SKIP_INSTALL_PROMPTS=1: ghi cron mặc định luôn
-  LTM_INSTALL_REPORT_LANG=vi|en — chọn ngôn ngữ mặc định cho lệnh ltm-report
+  LTM_INSTALL_CRON=default      — chỉ có nghĩa khi kèm SKIP_INSTALL_PROMPTS=1: ghi mặc định report=15m, update=daily 00:00
+  LTM_INSTALL_REPORT_LANG=vi|en — chọn ngôn ngữ cài đặt (script + thông báo Telegram)
   LTM_INSTALL_PROFILE=basic     — cấu hình tương tác ngắn (bỏ qua menu 1/2)
   LTM_INSTALL_PROFILE=advanced — hỏi đầy đủ như chọn "2" trên menu
 EOF

@@ -22,7 +22,7 @@ Bộ script cho **Debian/Ubuntu** để:
 
 - **`ltm-update`**: `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`, tùy chọn `fwupdmgr`, gửi báo cáo Telegram, có thể tự reboot khi `/var/run/reboot-required`.
 - **`ltm-report`**: báo cáo tài nguyên hệ thống, Docker, và các khối theo dõi mở rộng cho Debian/Ubuntu.
-- **`ltm-report-en`**: bản báo cáo tiếng Anh, dùng chung config với `ltm-report`.
+- **Ngôn ngữ cài đặt**: chọn `vi` hoặc `en` khi cài; script chỉ cài 1 bộ ngôn ngữ tương ứng.
 - **`ltm-bot`**: bot Telegram lấy báo cáo/lệnh nhanh.
 - **`ltm-schedule`**: quản lý cron trong `/etc/cron.d/linux-telegram-monitor`.
 
@@ -44,8 +44,9 @@ sudo bash install.sh
 Wizard cài đặt sẽ hỏi:
 - ngôn ngữ mặc định cho `ltm-report` (**Việt** hoặc **Anh**),
 - profile `basic/advanced`,
+- dùng **cùng bot/chat** cho update + report hay tách riêng,
 - ghi config vào `/etc`,
-- tạo cron mặc định.
+- lịch chạy: mặc định `ltm-report` mỗi **15 phút**, `ltm-update` mỗi ngày **00:00** (có thể đổi ngay lúc cài).
 
 #### 3) Cài không tương tác (CI/automation)
 
@@ -58,8 +59,8 @@ sudo SKIP_INSTALL_PROMPTS=1 \
 
 Biến môi trường thường dùng:
 - `SKIP_INSTALL_PROMPTS=1`
-- `LTM_INSTALL_REPORT_LANG=vi|en`
-- `LTM_INSTALL_CRON=default`
+- `LTM_INSTALL_REPORT_LANG=vi|en` (chọn ngôn ngữ cài đặt duy nhất)
+- `LTM_INSTALL_CRON=default` (mặc định: report=15m, update=daily 00:00)
 - `LTM_INSTALL_PROFILE=basic|advanced`
 - `PREFIX`, `DESTDIR`
 
@@ -67,7 +68,6 @@ Biến môi trường thường dùng:
 
 ```bash
 sudo ltm-report
-sudo ltm-report-en
 sudo ltm-update
 ```
 
@@ -76,7 +76,6 @@ sudo ltm-update
 ```bash
 sudo ltm-update          # hoặc: sudo server-telegram-update
 sudo ltm-report          # hoặc: sudo server-telegram-report
-sudo ltm-report-en       # hoặc: sudo server-telegram-report-en
 sudo ltm-bot
 sudo ltm-schedule
 ```
@@ -194,7 +193,7 @@ Scripts for **Debian/Ubuntu** to:
 
 - **`ltm-update`**: runs `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`; optional `fwupdmgr`; sends Telegram update summary; optional reboot on `/var/run/reboot-required`.
 - **`ltm-report`**: system resource reporting with optional Docker and extended Debian/Ubuntu monitoring blocks.
-- **`ltm-report-en`**: English report variant (same config as `ltm-report`).
+- **Install language**: choose `vi` or `en` during install; only one language pack is installed.
 - **`ltm-bot`**: Telegram bot for quick report/diagnostic commands.
 - **`ltm-schedule`**: cron manager for `/etc/cron.d/linux-telegram-monitor`.
 
@@ -216,8 +215,9 @@ sudo bash install.sh
 Install wizard asks for:
 - default language for `ltm-report` (**Vietnamese** or **English**),
 - profile `basic/advanced`,
+- whether update/report should share the same Telegram bot/chat or use separate credentials,
 - write config into `/etc`,
-- default cron creation.
+- schedule setup: default `ltm-report` every **15 minutes**, `ltm-update` daily at **00:00** (editable during install).
 
 #### 3) Non-interactive install (CI/automation)
 
@@ -230,8 +230,8 @@ sudo SKIP_INSTALL_PROMPTS=1 \
 
 Common env vars:
 - `SKIP_INSTALL_PROMPTS=1`
-- `LTM_INSTALL_REPORT_LANG=vi|en`
-- `LTM_INSTALL_CRON=default`
+- `LTM_INSTALL_REPORT_LANG=vi|en` (single install language)
+- `LTM_INSTALL_CRON=default` (default: report=15m, update=daily 00:00)
 - `LTM_INSTALL_PROFILE=basic|advanced`
 - `PREFIX`, `DESTDIR`
 
@@ -239,7 +239,6 @@ Common env vars:
 
 ```bash
 sudo ltm-report
-sudo ltm-report-en
 sudo ltm-update
 ```
 
@@ -248,7 +247,6 @@ sudo ltm-update
 ```bash
 sudo ltm-update          # or: sudo server-telegram-update
 sudo ltm-report          # or: sudo server-telegram-report
-sudo ltm-report-en       # or: sudo server-telegram-report-en
 sudo ltm-bot
 sudo ltm-schedule
 ```

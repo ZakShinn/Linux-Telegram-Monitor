@@ -2,8 +2,8 @@
 # linux-telegram-monitor — ghi /etc/cron.d/linux-telegram-monitor cho ltm-report / ltm-update
 #
 #   sudo ltm-schedule                 # wizard tùy chọn giờ
-#   sudo ltm-schedule defaults        # báo 6 giờ/lần + cập nhật CN 03:00
-#   sudo ltm-schedule apply --report 6h --update weekly [--update-hour 3]
+#   sudo ltm-schedule defaults        # báo 15 phút/lần + cập nhật hằng ngày 00:00
+#   sudo ltm-schedule apply --report 15m --update daily [--update-hour 0]
 #   sudo ltm-schedule apply --report-off --update off
 #   sudo ltm-schedule show
 #   sudo ltm-schedule remove
@@ -27,11 +27,12 @@ require_root() {
   fi
 }
 
-# off | 30m | 1h | 2h | 3h | 4h | 6h | 8h | 12h | daily:N
+# off | 15m | 30m | 1h | 2h | 3h | 4h | 6h | 8h | 12h | daily:N
 report_to_cron() {
   local rep=${1,,}
   case "$rep" in
   off | none | '') printf '%s' "" ;;
+  15m) printf '%s' '*/15 * * * *' ;;
   30m) printf '%s' '*/30 * * * *' ;;
   1h) printf '%s' '0 * * * *' ;;
   2h) printf '%s' '0 */2 * * *' ;;
@@ -111,22 +112,24 @@ wizard() {
 
   echo "══ Báo cáo (ltm-report) ══"
   echo "  0 — Tắt"
-  echo "  1 — 30 phút"
-  echo "  2 — Mỗi giờ"
-  echo "  3 — Mỗi 6 giờ (khuyến nghị)"
-  echo "  4 — Mỗi 12 giờ"
-  echo "  5 — Mỗi ngày một lần"
-  read -r -p "Chọn [0–5], Enter = 3: " ch </dev/tty || true
-  ch="${ch:-3}"
+  echo "  1 — 15 phút (mặc định)"
+  echo "  2 — 30 phút"
+  echo "  3 — Mỗi giờ"
+  echo "  4 — Mỗi 6 giờ"
+  echo "  5 — Mỗi 12 giờ"
+  echo "  6 — Mỗi ngày một lần"
+  read -r -p "Chọn [0–6], Enter = 1: " ch </dev/tty || true
+  ch="${ch:-1}"
 
-  rep=6h
-  case "${ch:-3}" in
+  rep=15m
+  case "${ch:-1}" in
   0) rep="off" ;;
-  1) rep="30m" ;;
-  2) rep="1h" ;;
-  3) rep="6h" ;;
-  4) rep="12h" ;;
-  5)
+  1) rep="15m" ;;
+  2) rep="30m" ;;
+  3) rep="1h" ;;
+  4) rep="6h" ;;
+  5) rep="12h" ;;
+  6)
     read -r -p "Giờ (0–23), Enter = 8: " hh </dev/tty || true
     hh="${hh:-8}"
     hh="${hh//[^0-9]/}"
@@ -134,7 +137,7 @@ wizard() {
     [[ "$hh" -gt 23 ]] && hh=8
     rep="daily:${hh}"
     ;;
-  *) rep="6h" ;;
+  *) rep="15m" ;;
   esac
 
   rex=$(report_to_cron "$rep")
@@ -142,23 +145,28 @@ wizard() {
   echo ""
   echo "══ Cập nhật gói (ltm-update) ══"
   echo "  0 — Tắt (chạy tay khi cần)"
-  echo "  1 — Tuần: Chủ Nhật"
-  echo "  2 — Mỗi ngày (máy ổn định mới nên)"
+  echo "  1 — Mỗi ngày (mặc định)"
+  echo "  2 — Tuần: Chủ Nhật"
   read -r -p "Chọn [0–2], Enter = 1: " ch </dev/tty || true
   ch="${ch:-1}"
 
   uex=""
   case "${ch:-1}" in
   0) uex="" ;;
-  2)
-    read -r -p "Giờ mỗi ngày (0–23), Enter = 4: " opt </dev/tty || true
-    opt="${opt:-4}"
+  1)
+    read -r -p "Giờ mỗi ngày (0–23), Enter = 0: " opt </dev/tty || true
+    opt="${opt:-0}"
     uex="$(update_to_cron daily "${opt}")"
     ;;
-  1 | *)
+  2)
     read -r -p "Giờ CN (0–23), Enter = 3: " opt </dev/tty || true
     opt="${opt:-3}"
     uex="$(update_to_cron weekly "${opt}")"
+    ;;
+  *)
+    read -r -p "Giờ mỗi ngày (0–23), Enter = 4: " opt </dev/tty || true
+    opt="${opt:-0}"
+    uex="$(update_to_cron daily "${opt}")"
     ;;
   esac
 
@@ -168,7 +176,7 @@ wizard() {
 
 cmd_defaults() {
   require_root
-  write_crond "$(report_to_cron 6h)" "$(update_to_cron weekly 3)"
+  write_crond "$(report_to_cron 15m)" "$(update_to_cron daily 0)"
 }
 
 cmd_show() {
@@ -187,14 +195,14 @@ cmd_remove() {
 
 usage() {
   echo "sudo ltm-schedule              Wizard chọn kiểu gửi báo/cập nhật"
-  echo "sudo ltm-schedule defaults     Gợi ý: báo 6 giờ, cập nhật CN 03:00"
-  echo "sudo ltm-schedule apply --report 6h|30m|12h|off|daily:N --update weekly|daily|off [--update-hour H]"
+  echo "sudo ltm-schedule defaults     Gợi ý: báo 15 phút, cập nhật mỗi ngày 00:00"
+  echo "sudo ltm-schedule apply --report 15m|6h|30m|12h|off|daily:N --update weekly|daily|off [--update-hour H]"
   echo "sudo ltm-schedule show | remove"
 }
 
 cmd_apply() {
   require_root
-  local rep=6h up=weekly uh=3
+  local rep=15m up=daily uh=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --report)
