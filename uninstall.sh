@@ -121,3 +121,19 @@ echo "Nhớ tự tay:"
 echo "  • Cron: nếu từng thêm tay vào crontab khác (/root), bỏ dòng / trùng lịch với cron.d đã xoá"
 echo "  • systemd: sudo systemctl disable --now ltm-bot  &&  sudo rm -f /etc/systemd/system/ltm-bot.service  &&  sudo systemctl daemon-reload"
 echo "  • Log: /var/log/server-telegram-update*.log (tuỳ bạn)"
+
+# Tu dong xoa thu muc repo sau khi uninstall (neu dang chay trong Linux-Telegram-Monitor)
+SCRIPT_BASENAME="$(basename "$SCRIPT_DIR")"
+if [[ "$SCRIPT_BASENAME" == "Linux-Telegram-Monitor" ]]; then
+  PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+  echo "→ Đang xoá thư mục repo: $SCRIPT_DIR"
+  cd "$PARENT_DIR" 2>/dev/null || true
+  rm -rf -- "$SCRIPT_DIR" 2>/dev/null || true
+  if [[ -d "$SCRIPT_DIR" ]]; then
+    echo "⚠️ Không xoá được thư mục repo: $SCRIPT_DIR"
+  else
+    echo "→ Đã xoá thư mục repo: $SCRIPT_DIR"
+  fi
+else
+  echo "→ Bỏ qua xoá thư mục repo (đường dẫn hiện tại không phải Linux-Telegram-Monitor): $SCRIPT_DIR"
+fi
