@@ -67,10 +67,11 @@ remove_etc_confs() {
 echo "→ Xoá lệnh cài và symlink…"
 
 # Symlink trước để không còn tham chiếu tới target
-rm -f -- "$BIN/ltm-update" "$BIN/ltm-report" 2>/dev/null || true
+rm -f -- "$BIN/ltm-update" "$BIN/ltm-report" "$BIN/ltm-report-en" 2>/dev/null || true
 rm -f -- \
   "$BIN/server-telegram-update" \
   "$BIN/server-telegram-report" \
+  "$BIN/server-telegram-report-en" \
   "$BIN/ltm-bot" \
   "$BIN/ltm-schedule" \
   2>/dev/null || true

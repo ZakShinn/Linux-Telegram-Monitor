@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # server-telegram-report.sh — Báo cáo tài nguyên server + Docker qua Telegram (không dùng btop)
 #
+# DEBIAN / UBUNTU — Gợi ý theo dõi (bật/tắt qua MONITOR_* trong /etc/server-telegram-report.conf):
+#   Phần đầu tin: hostname, IP, OS (/etc/os-release), kernel, uptime, CPU/RAM/swap/đĩa /, load, nhiệt độ,
+#   zombie, cảnh báo đầy ổ (DISK_ALERT_PERCENT), lsblk, RX/TX theo iface, Top CPU + Top MEM.
+#   Khối tổng quát: boot (who -b), systemd failed units, df/inode, meminfo, cổng ss, ip -br,
+#   timedatectl (NTP), trạng thái systemd, timers, định tuyến ip route, ss thống kê TCP,
+#   pressure stall (/proc/pressure), resolvectl, UFW; trên APT: dpkg --audit, apt upgradable,
+#   reboot-required.pkgs, unattended-upgrades; tuỳ chọn: needrestart, AppArmor, snap, flatpak;
+#   RAID /proc/mdstat, mount NFS; TLS LE, journal err; Docker.
+#
 # CÀI ĐẶT
 # -------
 # sudo bash install.sh          # → /usr/local/bin/server-telegram-report và ltm-report (tên ngắn)
@@ -56,6 +65,29 @@ DISK_ALERT_PERCENT="${DISK_ALERT_PERCENT:-90}"
 MONITOR_TLS_CERTS="${MONITOR_TLS_CERTS:-0}"
 CERT_WARN_DAYS="${CERT_WARN_DAYS:-30}"
 MONITOR_JOURNAL_ERR="${MONITOR_JOURNAL_ERR:-0}"
+
+# Debian / Ubuntu — chi tiết (1=bật). Phần APT chỉ chạy khi có apt-get.
+MONITOR_OS_RELEASE="${MONITOR_OS_RELEASE:-1}"
+MONITOR_TOP_MEM="${MONITOR_TOP_MEM:-1}"
+MONITOR_TIMEDATECTL="${MONITOR_TIMEDATECTL:-1}"
+MONITOR_DPKG_AUDIT="${MONITOR_DPKG_AUDIT:-1}"
+MONITOR_APT_PENDING="${MONITOR_APT_PENDING:-1}"
+APT_PENDING_LIST_LINES="${APT_PENDING_LIST_LINES:-50}"
+MONITOR_REBOOT_PENDING="${MONITOR_REBOOT_PENDING:-1}"
+MONITOR_SYSTEMD_SUMMARY="${MONITOR_SYSTEMD_SUMMARY:-1}"
+MONITOR_SYSTEMD_TIMERS="${MONITOR_SYSTEMD_TIMERS:-1}"
+MONITOR_IP_ROUTE="${MONITOR_IP_ROUTE:-1}"
+MONITOR_SS_CONN_STATS="${MONITOR_SS_CONN_STATS:-1}"
+MONITOR_PRESSURE="${MONITOR_PRESSURE:-1}"
+MONITOR_RESOLVECTL="${MONITOR_RESOLVECTL:-1}"
+MONITOR_UFW="${MONITOR_UFW:-1}"
+MONITOR_NEEDRESTART="${MONITOR_NEEDRESTART:-0}"
+MONITOR_APPARMOR="${MONITOR_APPARMOR:-0}"
+MONITOR_SNAP="${MONITOR_SNAP:-0}"
+MONITOR_FLATPAK="${MONITOR_FLATPAK:-0}"
+MONITOR_UNATTENDED_UPGRADES="${MONITOR_UNATTENDED_UPGRADES:-1}"
+MONITOR_MDSTAT="${MONITOR_MDSTAT:-1}"
+MONITOR_NFS_MOUNTS="${MONITOR_NFS_MOUNTS:-1}"
 
 API_MSG_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
 API_DOC_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
@@ -190,6 +222,140 @@ tg_send_pre_trunc() {
   tg_send "<b>$title</b><pre>$esc</pre>"
 }
 
+# Chi tiết đặc thù Debian/Ubuntu (APT, systemd-resolved, UFW, …). Không làm fail báo cáo.
+extra_monitoring_debian_ubuntu() {
+  local buf apt_based=0 lines cnt est syn lis
+  command -v apt-get >/dev/null 2>&1 && apt_based=1
+
+  if [[ "$MONITOR_TIMEDATECTL" == "1" ]] && command -v timedatectl >/dev/null 2>&1; then
+    buf=$(timedatectl status 2>/dev/null || true)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🕐 timedatectl (timezone / NTP)" "$buf"
+  fi
+
+  if [[ "$apt_based" == "1" ]]; then
+    if [[ "$MONITOR_DPKG_AUDIT" == "1" ]]; then
+      buf=$(dpkg --audit 2>/dev/null || true)
+      if [[ -z "${buf//[:space:]/}" ]]; then
+        tg_send "<b>📋 dpkg --audit:</b> không có gói lỗi (hoặc không đọc được)."
+      else
+        tg_send_pre_trunc "📋 dpkg — gói cần xử lý (audit)" "$buf"
+      fi
+    fi
+
+    if [[ "$MONITOR_APT_PENDING" == "1" ]]; then
+      buf=$(apt list --upgradable 2>/dev/null | grep -v '^Listing' || true)
+      cnt=$(printf '%s\n' "$buf" | grep -c . || true)
+      lines="${APT_PENDING_LIST_LINES:-50}"
+      tg_send_pre_trunc "📦 APT — có thể nâng cấp (đếm ~${cnt}, tối đa ${lines} dòng)" "$(printf 'Ước lượng số dòng gói: %s\n\n%s\n' "${cnt:-0}" "$(printf '%s\n' "$buf" | head -n "$lines")")"
+    fi
+
+    if [[ "$MONITOR_REBOOT_PENDING" == "1" ]]; then
+      if [[ -f /var/run/reboot-required ]]; then
+        buf="reboot-required: có"$'\n'
+        if [[ -f /var/run/reboot-required.pkgs ]]; then
+          buf+="reboot-required.pkgs (tối đa 45 dòng):"$'\n'"$(head -n 45 /var/run/reboot-required.pkgs 2>/dev/null || true)"
+        else
+          buf+="(không có reboot-required.pkgs)"
+        fi
+      else
+        buf="reboot-required: không có cờ /var/run/reboot-required"
+      fi
+      tg_send_pre_trunc "🔁 Khởi động lại sau cập nhật (APT)" "$buf"
+    fi
+
+    if [[ "$MONITOR_UNATTENDED_UPGRADES" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+      if [[ -f /lib/systemd/system/unattended-upgrades.service ]] || [[ -f /usr/lib/systemd/system/unattended-upgrades.service ]]; then
+        buf="is-enabled: $(systemctl is-enabled unattended-upgrades 2>/dev/null || echo 'n/a')"
+        buf+=$'\n'"$(systemctl status unattended-upgrades --no-pager -l 2>/dev/null | head -n 22 || true)"
+        tg_send_pre_trunc "🤖 unattended-upgrades (systemd)" "$buf"
+      fi
+    fi
+  fi
+
+  if [[ "$MONITOR_SYSTEMD_SUMMARY" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+    buf="$(systemctl is-system-running 2>/dev/null || echo '?')"
+    buf+=$'\n'"$(systemctl show --property=SystemState --property=FailedJobs --no-pager 2>/dev/null || true)"
+    tg_send_pre_trunc "⚙️ systemd — running / SystemState" "$buf"
+  fi
+
+  if [[ "$MONITOR_SYSTEMD_TIMERS" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+    buf=$(systemctl list-timers --all --no-pager 2>/dev/null | head -n 38)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "⏱ systemd timers" "$buf"
+    buf=$(systemctl list-timers --failed --no-pager --no-legend 2>/dev/null || true)
+    if [[ -n "${buf//[:space:]/}" ]]; then
+      tg_send_pre_trunc "⚠️ systemd timers FAILED" "$buf"
+    fi
+  fi
+
+  if [[ "$MONITOR_IP_ROUTE" == "1" ]] && need ip; then
+    buf=$(ip route show 2>/dev/null | head -n 45)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🛤 ip route" "$buf"
+  fi
+
+  if [[ "$MONITOR_SS_CONN_STATS" == "1" ]] && need ss; then
+    est=$(ss -tan state established 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    syn=$(ss -tan state syn-recv 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    lis=$(ss -tan state listening 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    buf=$(printf 'TCP established rows: %s\nTCP syn-recv: %s\nTCP listening: %s\n\nSample established (≤25):\n%s' \
+      "${est:-0}" "${syn:-0}" "${lis:-0}" "$(ss -tan state established 2>/dev/null | tail -n +2 | head -n 25)")
+    tg_send_pre_trunc "🔌 TCP ss — thống kê & mẫu" "$buf"
+  fi
+
+  if [[ "$MONITOR_PRESSURE" == "1" ]]; then
+    buf=""
+    for f in /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do
+      [[ -r "$f" ]] && buf+="$(basename "$f"): $(cat "$f" 2>/dev/null || true)"$'\n'
+    done
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "📉 Pressure stall (/proc/pressure)" "$buf"
+  fi
+
+  if [[ "$MONITOR_RESOLVECTL" == "1" ]] && command -v resolvectl >/dev/null 2>&1; then
+    buf=$(resolvectl status 2>/dev/null | head -n 55)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🔎 DNS (resolvectl)" "$buf"
+  fi
+
+  if [[ "$MONITOR_UFW" == "1" ]] && command -v ufw >/dev/null 2>&1; then
+    buf=$(LC_ALL=C ufw status verbose 2>/dev/null | head -n 45)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🛡 UFW" "$buf"
+  fi
+
+  if [[ "$MONITOR_NEEDRESTART" == "1" ]] && command -v needrestart >/dev/null 2>&1; then
+    buf=$(needrestart -b 2>/dev/null | head -n 65 || true)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "♻️ needrestart (nhị phân/dịch vụ cần restart)" "$buf"
+  fi
+
+  if [[ "$MONITOR_APPARMOR" == "1" ]] && command -v aa-status >/dev/null 2>&1; then
+    buf=$(aa-status 2>/dev/null | head -n 50)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🔒 AppArmor (aa-status)" "$buf"
+  fi
+
+  if [[ "$MONITOR_SNAP" == "1" ]] && command -v snap >/dev/null 2>&1; then
+    buf=$(snap list 2>/dev/null | head -n 42)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "📦 snap list" "$buf"
+  fi
+
+  if [[ "$MONITOR_FLATPAK" == "1" ]] && command -v flatpak >/dev/null 2>&1; then
+    buf=$(flatpak list 2>/dev/null | head -n 38)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "📦 flatpak list" "$buf"
+  fi
+
+  if [[ "$MONITOR_MDSTAT" == "1" ]] && [[ -r /proc/mdstat ]]; then
+    buf=$(grep -v '^$' /proc/mdstat 2>/dev/null || true)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "💿 /proc/mdstat (software RAID)" "$buf"
+  fi
+
+  if [[ "$MONITOR_NFS_MOUNTS" == "1" ]]; then
+    if command -v findmnt >/dev/null 2>&1; then
+      buf=$(findmnt -rn -t nfs,nfs4 2>/dev/null | head -n 35 || true)
+    else
+      buf=$(awk '$3 ~ /^nfs/ || $3 ~ /^nfs4/ {print}' /proc/mounts 2>/dev/null | head -n 35 || true)
+    fi
+    if [[ -n "${buf//[:space:]/}" ]]; then
+      tg_send_pre_trunc "📁 NFS mounts" "$buf"
+    fi
+  fi
+}
+
 extra_monitoring() {
   local buf
 
@@ -247,6 +413,8 @@ extra_monitoring() {
     fi
     [[ -n "$buf" ]] && tg_send_pre_trunc "📶 Giao diện &amp; IP (ip -br a)" "$buf"
   fi
+
+  extra_monitoring_debian_ubuntu
 
   report_tls_letsencrypt
 
@@ -449,6 +617,15 @@ fi
 
 load_coretemp_if_possible
 
+OS_HTML=""
+if [[ "$MONITOR_OS_RELEASE" == "1" ]] && [[ -r /etc/os-release ]]; then
+  OS_PRETTY_LINE=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+  OS_CODENAME=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+  OS_SUFFIX=""
+  [[ -n "${OS_CODENAME:-}" ]] && OS_SUFFIX=" (${OS_CODENAME})"
+  OS_HTML=$'\n'"<b>📀 OS:</b> <code>${OS_PRETTY_LINE:-unknown}${OS_SUFFIX}</code>"
+fi
+
 HOSTNAME=$(hostname 2>/dev/null || echo "?")
 IPV4_PUBLIC=$(curl -fsS -4 -m 3 --connect-timeout 2 https://ifconfig.me 2>/dev/null || echo "N/A")
 IPV6_PUBLIC=$(curl -fsS -6 -m 3 --connect-timeout 2 https://ifconfig.me 2>/dev/null || echo "N/A")
@@ -490,7 +667,7 @@ MSG_HEAD=$(cat <<EOF
 <b>🏠 IP Private:</b> <code>${IP_PRIVATE:-N/A}</code>
 <b>🕰 Local Time:</b> <code>$DATE</code> (<code>$TZ</code>)
 <b>🧰 Kernel:</b> <code>$KERNEL</code>
-<b>⏳ Uptime:</b> <code>$UPTIME</code>
+<b>⏳ Uptime:</b> <code>$UPTIME</code>${OS_HTML}
 
 <b>📊 Resource</b>
 • CPU: <code>$CPU</code>
@@ -523,6 +700,11 @@ tg_send "<b>🌍 Network</b><pre>$NET_TABLE</pre>"
 
 PS_SHOW=$(ps -eo pid,user,%cpu,%mem,cmd --sort=-%cpu 2>/dev/null | head -n 15 | sanitize_pre)
 tg_send "<b>📝 Top CPU processes</b><pre>$PS_SHOW</pre>"
+
+if [[ "$MONITOR_TOP_MEM" == "1" ]]; then
+  PS_MEM_SHOW=$(ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem 2>/dev/null | head -n 15 | sanitize_pre)
+  tg_send "<b>📝 Top MEM processes</b><pre>$PS_MEM_SHOW</pre>"
+fi
 
 extra_monitoring
 

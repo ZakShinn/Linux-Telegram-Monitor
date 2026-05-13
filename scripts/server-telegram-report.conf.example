@@ -36,3 +36,26 @@ TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
 # MONITOR_TLS_CERTS=0       # 1 = đọc /etc/letsencrypt/live/*/cert.pem (openssl), còn N ngày
 # CERT_WARN_DAYS=30         # vẫn liệt kê hết hạn; nhấn mạnh cert sắp hết trong N ngày
 # MONITOR_JOURNAL_ERR=0     # 1 = journalctl err…alert (~35 dòng, có thể dài)
+#
+# Debian / Ubuntu — chi tiết thêm (mặc định trong script: hầu hết BẬT; snap/flatpak/AppArmor/needrestart TẮT):
+# MONITOR_OS_RELEASE=1          # dòng OS (/etc/os-release) trong phần đầu tin
+# MONITOR_TOP_MEM=1             # Top ~15 tiến trình theo %MEM (sau Top CPU)
+# MONITOR_TIMEDATECTL=1         # timedatectl status (NTP, timezone)
+# MONITOR_DPKG_AUDIT=1          # dpkg --audit (chỉ khi có apt-get)
+# MONITOR_APT_PENDING=1         # apt list --upgradable (đếm + danh sách; có thể chậm nhẹ)
+# APT_PENDING_LIST_LINES=50     # giới hạn số dòng liệt kê gói upgradable
+# MONITOR_REBOOT_PENDING=1      # /var/run/reboot-required và .pkgs
+# MONITOR_SYSTEMD_SUMMARY=1     # systemctl is-system-running + SystemState
+# MONITOR_SYSTEMD_TIMERS=1      # list-timers + timers failed
+# MONITOR_IP_ROUTE=1            # ip route show
+# MONITOR_SS_CONN_STATS=1       # ss TCP established/syn-recv/listening + mẫu kết nối
+# MONITOR_PRESSURE=1            # /proc/pressure (CPU/mem/io) nếu kernel hỗ trợ
+# MONITOR_RESOLVECTL=1          # resolvectl status (systemd-resolved)
+# MONITOR_UFW=1                 # ufw status verbose (nếu có ufw)
+# MONITOR_NEEDRESTART=0         # needrestart -b (chậm; bật nếu cần)
+# MONITOR_APPARMOR=0            # aa-status (Ubuntu/AppArmor)
+# MONITOR_SNAP=0                # snap list
+# MONITOR_FLATPAK=0             # flatpak list
+# MONITOR_UNATTENDED_UPGRADES=1 # systemd status unattended-upgrades (khi có apt)
+# MONITOR_MDSTAT=1              # /proc/mdstat nếu có RAID md
+# MONITOR_NFS_MOUNTS=1          # findmnt NFS (hiện khi có mount)

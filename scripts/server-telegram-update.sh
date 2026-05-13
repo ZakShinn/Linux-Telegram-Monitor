@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # server-telegram-update.sh — Cập nhật gói (apt) + firmware (fwupd) + báo Telegram
 #
+# Ubuntu / Debian — Script ghi nhận & báo Telegram khi chạy:
+#   • Trước: dung lượng ổ /, RAM khả dụng (tránh đầy đĩa giữa chừng).
+#   • Nhận diện: hostname, OS (lsb_release/os-release), kernel trước/sau.
+#   • APT: apt-get update → danh sách upgradable → upgrade + full-upgrade → autoremove --purge, autoclean.
+#   • Firmware: fwupdmgr refresh/update khi RUN_FWUPD=1 và có lệnh.
+#   • Sau thư viện mới: needrestart -b (nếu cài needrestart).
+#   • Reboot: /var/run/reboot-required và reboot-required.pkgs (log + tóm tắt tin).
+#   • Đĩa / sau cùng trong log file; REBOOT_IF_REQUIRED có thể gọi shutdown -r.
+#
 # Cài: sudo bash install.sh  →  /usr/local/bin/server-telegram-update  (ltm-update)
 # Cấu hình: /etc/server-telegram-update.conf
 # Cron: 0 3 * * 0 /usr/local/bin/ltm-update >>/var/log/server-telegram-update.cron.log 2>&1

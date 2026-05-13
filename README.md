@@ -2,37 +2,38 @@
 
 **Repository:** [github.com/ZakShinn/Linux-Telegram-Monitor](https://github.com/ZakShinn/Linux-Telegram-Monitor)
 
-Bộ script chạy trên Linux (chuẩn **Debian/Ubuntu**) để: **nhận cập nhật gói** (APT), **báo cáo tài nguyên server + Docker**, và **gửi kết quả lên Telegram**. Cấu hình đơn giản bằng file và vài lệnh.
+- [Tiếng Việt](#tieng-viet)
+- [English](#english)
 
 ---
 
-## Có những gì?
+## Tiếng Việt
 
-### Cập nhật hệ thống (`ltm-update`)
+[Jump to English](#english)
 
-Chạy cập nhật package kiểu Ubuntu/Debian, gửi tóm tắt lên Telegram, có log trên máy. Có thể bật cập nhật firmware và tự reboot sau cập nhật (tuỳ cấu hình — reboot thường để **tắt**).
+### Giới thiệu
 
-### Báo cáo định kỳ (`ltm-report`)
+Bộ script cho **Debian/Ubuntu** để:
+- cập nhật hệ thống bằng **APT**,
+- gửi báo cáo tài nguyên server (kèm Docker nếu bật),
+- điều khiển nhanh qua Telegram bot.
 
-Một báo cáo gửi Telegram: máy chủ đang làm việc thế nào (đĩa, RAM, tải, mạng, top tiến trình…), có thêm phần **Docker** nếu máy có Docker và bạn đã cho phép.
+### Tính năng chính
 
-### Bot Telegram (`ltm-bot`)
+- **`ltm-update`**: `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`, tùy chọn `fwupdmgr`, gửi báo cáo Telegram, có thể tự reboot khi `/var/run/reboot-required`.
+- **`ltm-report`**: báo cáo tài nguyên hệ thống, Docker, và các khối theo dõi mở rộng cho Debian/Ubuntu.
+- **`ltm-report-en`**: bản báo cáo tiếng Anh, dùng chung config với `ltm-report`.
+- **`ltm-bot`**: bot Telegram lấy báo cáo/lệnh nhanh.
+- **`ltm-schedule`**: quản lý cron trong `/etc/cron.d/linux-telegram-monitor`.
 
-Gõ lệnh trong chat để lấy **báo cáo nhanh** hoặc **báo cáo đầy đủ** như `ltm-report`. Còn nhiều lệnh phụ như xem Docker, đĩa, RAM… Gõ **`/help`** khi bot đã chạy để xem đủ. Lệnh **`/update`** từ Telegram mặc định **tắt** vì nhạy cảm — chỉ bật nếu bạn hiểu rủi ro.
+### Cài đặt
 
-Để bot chạy nền, dùng **systemd** (ví dụ service chạy `ltm-bot`, chạy lại khi tắt). Cần cài **`jq`** trước khi chạy bot.
+#### 1) Chuẩn bị Telegram
+- Tạo bot qua [@BotFather](https://t.me/BotFather), lấy token.
+- Nhắn bot 1 tin trong chat/group cần nhận cảnh báo.
+- Mở `https://api.telegram.org/bot<TOKEN>/getUpdates` để lấy `chat_id`.
 
----
-
-## Cài đặt (lược đồ thường dùng)
-
-### 1. Chuẩn bị Telegram
-
-- Tạo bot với [@BotFather](https://t.me/BotFather), lưu **token**.
-- Nhắn bot một câu trong đúng chat (hoặc nhóm) bạn muốn nhận tin.
-- Mở trên trình duyệt `https://api.telegram.org/bot<TOKEN>/getUpdates` và tìm số **chat id** của bạn trong kết quả (thêm tin rồi tải lại trang nếu không thấy).
-
-### 2. Cài vào máy chủ
+#### 2) Cài script
 
 ```bash
 git clone https://github.com/ZakShinn/Linux-Telegram-Monitor.git
@@ -40,114 +41,317 @@ cd Linux-Telegram-Monitor
 sudo bash install.sh
 ```
 
-Script hỏi **cấu hình ngắn hay đầy đủ**, có thể ghi **`/etc`**, và cuối cùng (**mặc định Có**) đề nghị **bật lịch cron** gửi báo cáo ~6 giờ/lần + chạy cập nhật **Chủ Nhật 03:00**. Bạn chỉnh lại hoặc tắt bằng lệnh bên dưới.
+Wizard cài đặt sẽ hỏi:
+- ngôn ngữ mặc định cho `ltm-report` (**Việt** hoặc **Anh**),
+- profile `basic/advanced`,
+- ghi config vào `/etc`,
+- tạo cron mặc định.
 
-Cài không hỏi gì (**`SKIP_INSTALL_PROMPTS=1`**) có thể thêm **`LTM_INSTALL_CRON=default`** để **vẫn ghi cron mặc định**.
+#### 3) Cài không tương tác (CI/automation)
 
-### 3. Thử báo cáo
+```bash
+sudo SKIP_INSTALL_PROMPTS=1 \
+  LTM_INSTALL_REPORT_LANG=vi \
+  LTM_INSTALL_CRON=default \
+  bash install.sh
+```
+
+Biến môi trường thường dùng:
+- `SKIP_INSTALL_PROMPTS=1`
+- `LTM_INSTALL_REPORT_LANG=vi|en`
+- `LTM_INSTALL_CRON=default`
+- `LTM_INSTALL_PROFILE=basic|advanced`
+- `PREFIX`, `DESTDIR`
+
+#### 4) Test nhanh
 
 ```bash
 sudo ltm-report
+sudo ltm-report-en
+sudo ltm-update
 ```
 
-Nếu Telegram nhận được báo cáo là ổn. **Docker** không hiện nếu tài khoản chạy lệnh không có quyền với Docker — thường chạy bằng **root** hoặc thêm user vào nhóm **docker**.
-
-### 4. Lịch gửi báo / chạy cập nhật
-
-Lệnh **`ltm-schedule`** ghi file **`/etc/cron.d/linux-telegram-monitor`** (không xen vào **`crontab -e`** trừ khi bạn tự làm tay).
+### Lệnh sử dụng
 
 ```bash
-sudo ltm-schedule                   # wizard: chọn từng khoảng thời gian
-sudo ltm-schedule defaults          # báo ~6 giờ/lần + cập nhật CN 03:00
-sudo ltm-schedule show              # xem lịch hiện tại
-sudo ltm-schedule remove            # xoá file cron.d do ltm tạo
+sudo ltm-update          # hoặc: sudo server-telegram-update
+sudo ltm-report          # hoặc: sudo server-telegram-report
+sudo ltm-report-en       # hoặc: sudo server-telegram-report-en
+sudo ltm-bot
+sudo ltm-schedule
 ```
 
-Ví dụ **đặt không hỏi menu** — báo mỗi **4 giờ**, cập nhật **tuần 1 lần lúc 2h**:
+### Theo dõi chi tiết Debian/Ubuntu
+
+`ltm-report` gồm: hostname/IP/time/kernel/uptime/OS release, CPU/RAM/swap/disk/load, top CPU/MEM, bảng disk/network.
+
+Bật/tắt qua `/etc/server-telegram-report.conf`:
+- Core: `MONITOR_LAST_BOOT`, `MONITOR_SYSTEMD_FAILED`, `MONITOR_DF_ALL`, `MONITOR_INODES`, `MONITOR_MEMINFO`, `MONITOR_LISTEN_PORTS`, `MONITOR_IP_BRIEF`.
+- Alert: `MONITOR_ZOMBIES`, `MONITOR_DISK_ALERT`, `DISK_ALERT_PERCENT`.
+- TLS/Logs: `MONITOR_TLS_CERTS`, `CERT_WARN_DAYS`, `MONITOR_JOURNAL_ERR`.
+- Docker: `MONITOR_DOCKER`, `MONITOR_DOCKER_SYSTEM_DF`, `MONITOR_DOCKER_HEALTH`, `MONITOR_DOCKER_COMPOSE`, `MONITOR_DOCKER_NETWORKS`.
+- Debian/Ubuntu detail: `MONITOR_TIMEDATECTL`, `MONITOR_DPKG_AUDIT`, `MONITOR_APT_PENDING`, `APT_PENDING_LIST_LINES`, `MONITOR_REBOOT_PENDING`, `MONITOR_SYSTEMD_SUMMARY`, `MONITOR_SYSTEMD_TIMERS`, `MONITOR_IP_ROUTE`, `MONITOR_SS_CONN_STATS`, `MONITOR_PRESSURE`, `MONITOR_RESOLVECTL`, `MONITOR_UFW`, `MONITOR_UNATTENDED_UPGRADES`, `MONITOR_NEEDRESTART`, `MONITOR_APPARMOR`, `MONITOR_SNAP`, `MONITOR_FLATPAK`, `MONITOR_MDSTAT`, `MONITOR_NFS_MOUNTS`.
+
+`ltm-update` theo dõi: gói upgradable, kernel trước/sau, disk/RAM trước cập nhật, `reboot-required`, `reboot-required.pkgs`, `needrestart` (nếu có).
+
+### Scheduling
 
 ```bash
+sudo ltm-schedule
+sudo ltm-schedule defaults
+sudo ltm-schedule show
+sudo ltm-schedule remove
 sudo ltm-schedule apply --report 4h --update weekly --update-hour 2
 ```
 
-(**`--report off`** / **`--update off`** nếu muốn tắt một trong hai.) Log cron: **`/var/log/ltm-report.cron.log`**, **`/var/log/ltm-update.cron.log`**.
+Cron logs:
+- `/var/log/ltm-report.cron.log`
+- `/var/log/ltm-update.cron.log`
 
-*Nếu bạn vẫn thích chỉ tay:* `sudo crontab -e` vẫn dùng được; tránh **`ltm-schedule`** trùng thời gian với dòng tay.
-
-### 5. Bot lệnh (tuỳ chọn)
+### Bot (tùy chọn)
 
 ```bash
 sudo apt install -y jq
 sudo cp /usr/local/share/linux-telegram-monitor/ltm-telegram-bot.conf.example /etc/ltm-telegram-bot.conf
 sudo chmod 600 /etc/ltm-telegram-bot.conf
 sudo nano /etc/ltm-telegram-bot.conf
+sudo ltm-bot
 ```
 
-Điền **token** và **chat id** giống báo cáo (file mẫu có gợi ý dùng chung với file báo cáo). Chạy **`sudo ltm-bot`** hoặc tạo **service systemd** trỏ tới `ltm-bot` để chạy nền.
+### Cập nhật
 
-**Lưu ý:** chỉ chạy **một** bot lắng nghe lệnh với **cùng** token Telegram.
-
-### Cập nhật sau khi repo có bản mới (`git pull`)
-
-Trong **cùng thư mục** đã clone:
+#### Cập nhật nhanh theo nhánh hiện tại
 
 ```bash
 git pull
 sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+sudo systemctl restart ltm-bot   # nếu chạy bot qua systemd
 ```
 
-Cách này **ghi đè các lệnh** (`ltm-update`, `ltm-report`, `ltm-bot`, `ltm-schedule`…) và mẫu trong **`share/`**, nhưng **không chạy lại phần hỏi cấu hình**, nên file **`/etc/server-telegram-*.conf`** và **`/etc/ltm-telegram-bot.conf`** của bạn **giữ nguyên**. Cron do **`ltm-schedule`** tạo **không đổi**, trừ khi bạn tự chỉnh lại.
+#### Cập nhật theo tag/version
 
-Đang chạy bot nền (**systemd**): **`sudo systemctl restart ltm-bot`** để dùng bản **`ltm-bot`** mới.
+```bash
+cat VERSION
+cat /usr/local/share/linux-telegram-monitor/VERSION
 
-Nếu bạn **không** dùng `SKIP_INSTALL_PROMPTS=1`, chạy `install.sh` bình thường được; khi được hỏi **ghi đè** các file **`/etc`**, chọn **không** nếu muốn **giữ** token và chỉnh tay hiện tại — so sánh tay với **`*.conf.example`** mới trong **`share`** nếu có thêm dòng trong bản repo.
+git fetch --tags origin
+git tag -l 'v*'
+git checkout v1.0.0
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+```
 
----
+Quay lại branch chính:
 
-## Gỡ cài
+```bash
+git checkout main
+git pull
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+```
+
+### Gỡ cài đặt
 
 ```bash
 sudo bash uninstall.sh
+sudo bash uninstall.sh --purge
+sudo bash uninstall.sh --keep-config
+./uninstall.sh --help
 ```
 
-Có phiên bản **xoá luôn file cấu hình trong `/etc`** hoặc **giữ nguyên** — xem `./uninstall.sh --help`. Cron và service systemd **cần tự tay** xóa/ghi đè vì không nằm trong script repo.
+- `uninstall.sh`: gỡ binary + share + cron.d; hỏi xóa config `/etc` nếu có TTY.
+- `--purge`: xóa luôn config `/etc/server-telegram-*.conf`, `/etc/ltm-telegram-bot.conf`.
+- `--keep-config`: giữ config `/etc`.
 
----
-
-## File cần biết
+### File quan trọng
 
 | File | Vai trò |
 |------|---------|
-| `/etc/server-telegram-update.conf` | Token Telegram + tùy chọn cập nhật/reboot/log |
-| `/etc/server-telegram-report.conf` | Token Telegram + bật/tắt từng phần trong báo cáo |
-| `/etc/ltm-telegram-bot.conf` | Bot lệnh (tự tạo nếu dùng bot) |
+| `/etc/server-telegram-update.conf` | Token/chat id + tùy chọn update |
+| `/etc/server-telegram-report.conf` | Token/chat id + tùy chọn report |
+| `/etc/ltm-telegram-bot.conf` | Cấu hình bot |
+| `/usr/local/share/linux-telegram-monitor/VERSION` | Version đã cài |
 
-File mẫu nằm trong **`/usr/local/share/linux-telegram-monitor/`** sau khi cài. Chi tiết từng dòng trong mẫu **`.conf.example`** — không cần nhớ hết trong README.
+### Troubleshooting
 
-Lệnh tương đương:
+- Không nhận được Telegram: kiểm tra token/chat id và outbound internet.
+- Docker không hiện: chạy bằng root hoặc user thuộc group `docker`.
+- Bot không phản hồi: thiếu `jq`, chat id sai, hoặc nhiều process cùng đọc updates cùng token.
+- Cài không hỏi: có thể đang non-interactive; chỉnh `/etc/*.conf` thủ công.
+
+---
+
+## English
+
+[Quay về Tiếng Việt](#tieng-viet)
+
+### Overview
+
+Scripts for **Debian/Ubuntu** to:
+- update the system via **APT**,
+- send server resource reports (with Docker when enabled),
+- run Telegram bot commands for quick checks.
+
+### Main Features
+
+- **`ltm-update`**: runs `apt-get update/upgrade/full-upgrade`, `autoremove`, `autoclean`; optional `fwupdmgr`; sends Telegram update summary; optional reboot on `/var/run/reboot-required`.
+- **`ltm-report`**: system resource reporting with optional Docker and extended Debian/Ubuntu monitoring blocks.
+- **`ltm-report-en`**: English report variant (same config as `ltm-report`).
+- **`ltm-bot`**: Telegram bot for quick report/diagnostic commands.
+- **`ltm-schedule`**: cron manager for `/etc/cron.d/linux-telegram-monitor`.
+
+### Installation
+
+#### 1) Telegram setup
+- Create a bot with [@BotFather](https://t.me/BotFather), save the token.
+- Send one message in the target chat/group.
+- Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `chat_id`.
+
+#### 2) Install scripts
 
 ```bash
-sudo ltm-update     # hay: sudo server-telegram-update
-sudo ltm-report      # hay: sudo server-telegram-report
+git clone https://github.com/ZakShinn/Linux-Telegram-Monitor.git
+cd Linux-Telegram-Monitor
+sudo bash install.sh
 ```
 
+Install wizard asks for:
+- default language for `ltm-report` (**Vietnamese** or **English**),
+- profile `basic/advanced`,
+- write config into `/etc`,
+- default cron creation.
+
+#### 3) Non-interactive install (CI/automation)
+
+```bash
+sudo SKIP_INSTALL_PROMPTS=1 \
+  LTM_INSTALL_REPORT_LANG=en \
+  LTM_INSTALL_CRON=default \
+  bash install.sh
+```
+
+Common env vars:
+- `SKIP_INSTALL_PROMPTS=1`
+- `LTM_INSTALL_REPORT_LANG=vi|en`
+- `LTM_INSTALL_CRON=default`
+- `LTM_INSTALL_PROFILE=basic|advanced`
+- `PREFIX`, `DESTDIR`
+
+#### 4) Smoke test
+
+```bash
+sudo ltm-report
+sudo ltm-report-en
+sudo ltm-update
+```
+
+### Commands
+
+```bash
+sudo ltm-update          # or: sudo server-telegram-update
+sudo ltm-report          # or: sudo server-telegram-report
+sudo ltm-report-en       # or: sudo server-telegram-report-en
+sudo ltm-bot
+sudo ltm-schedule
+```
+
+### Detailed Monitoring (Debian/Ubuntu)
+
+`ltm-report` includes identity/time/kernel/uptime/OS release, CPU/RAM/swap/disk/load, top CPU/MEM processes, disk/network tables.
+
+Toggle blocks in `/etc/server-telegram-report.conf`:
+- Core: `MONITOR_LAST_BOOT`, `MONITOR_SYSTEMD_FAILED`, `MONITOR_DF_ALL`, `MONITOR_INODES`, `MONITOR_MEMINFO`, `MONITOR_LISTEN_PORTS`, `MONITOR_IP_BRIEF`.
+- Alerts: `MONITOR_ZOMBIES`, `MONITOR_DISK_ALERT`, `DISK_ALERT_PERCENT`.
+- TLS/Logs: `MONITOR_TLS_CERTS`, `CERT_WARN_DAYS`, `MONITOR_JOURNAL_ERR`.
+- Docker: `MONITOR_DOCKER`, `MONITOR_DOCKER_SYSTEM_DF`, `MONITOR_DOCKER_HEALTH`, `MONITOR_DOCKER_COMPOSE`, `MONITOR_DOCKER_NETWORKS`.
+- Debian/Ubuntu detail: `MONITOR_TIMEDATECTL`, `MONITOR_DPKG_AUDIT`, `MONITOR_APT_PENDING`, `APT_PENDING_LIST_LINES`, `MONITOR_REBOOT_PENDING`, `MONITOR_SYSTEMD_SUMMARY`, `MONITOR_SYSTEMD_TIMERS`, `MONITOR_IP_ROUTE`, `MONITOR_SS_CONN_STATS`, `MONITOR_PRESSURE`, `MONITOR_RESOLVECTL`, `MONITOR_UFW`, `MONITOR_UNATTENDED_UPGRADES`, `MONITOR_NEEDRESTART`, `MONITOR_APPARMOR`, `MONITOR_SNAP`, `MONITOR_FLATPAK`, `MONITOR_MDSTAT`, `MONITOR_NFS_MOUNTS`.
+
+`ltm-update` tracks upgradable packages, kernel before/after, pre-update disk/RAM, reboot-required hints, and `needrestart` output (if installed).
+
+### Scheduling
+
+```bash
+sudo ltm-schedule
+sudo ltm-schedule defaults
+sudo ltm-schedule show
+sudo ltm-schedule remove
+sudo ltm-schedule apply --report 4h --update weekly --update-hour 2
+```
+
+Cron logs:
+- `/var/log/ltm-report.cron.log`
+- `/var/log/ltm-update.cron.log`
+
+### Bot (Optional)
+
+```bash
+sudo apt install -y jq
+sudo cp /usr/local/share/linux-telegram-monitor/ltm-telegram-bot.conf.example /etc/ltm-telegram-bot.conf
+sudo chmod 600 /etc/ltm-telegram-bot.conf
+sudo nano /etc/ltm-telegram-bot.conf
+sudo ltm-bot
+```
+
+### Updating
+
+#### Quick update (current branch)
+
+```bash
+git pull
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+sudo systemctl restart ltm-bot   # if using systemd
+```
+
+#### Update by tag/version
+
+```bash
+cat VERSION
+cat /usr/local/share/linux-telegram-monitor/VERSION
+
+git fetch --tags origin
+git tag -l 'v*'
+git checkout v1.0.0
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+```
+
+Return to main branch:
+
+```bash
+git checkout main
+git pull
+sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
+```
+
+### Uninstallation
+
+```bash
+sudo bash uninstall.sh
+sudo bash uninstall.sh --purge
+sudo bash uninstall.sh --keep-config
+./uninstall.sh --help
+```
+
+- `uninstall.sh`: remove binaries/share/cron.d; asks about `/etc` config removal when running in TTY mode.
+- `--purge`: also remove `/etc/server-telegram-*.conf` and `/etc/ltm-telegram-bot.conf`.
+- `--keep-config`: keep `/etc` configs.
+
+### Important Files
+
+| File | Purpose |
+|------|---------|
+| `/etc/server-telegram-update.conf` | Token/chat id + update options |
+| `/etc/server-telegram-report.conf` | Token/chat id + report options |
+| `/etc/ltm-telegram-bot.conf` | Bot configuration |
+| `/usr/local/share/linux-telegram-monitor/VERSION` | Installed version |
+
+### Troubleshooting
+
+- No Telegram messages: verify token/chat id and outbound network access.
+- Docker block missing: run as root or a user in group `docker`.
+- Bot not responding: missing `jq`, wrong chat id, or multiple listeners using the same bot token.
+- No install prompts: likely non-interactive mode; edit `/etc/*.conf` manually.
+
 ---
 
-## Không hoạt động?
+## License
 
-- **Không có tin Telegram:** Sai token hoặc chat id; máy chủ không ra internet.
-- **Bot không đáp:** Thiếu **jq**, sai chat id, hoặc đang có **hai** chỗ cùng bắt tin của một bot.
-- **`install.sh` không hỏi gì:** Thường do chạy không qua terminal thật — bạn chỉnh file trong **`/etc`** thủ công và copy từ mẫu.
+See [LICENSE](LICENSE).
 
----
-
-## Nâng cao (ích khi làm máy chủ/DevOps)
-
-Biến môi trường khi cài: **`SKIP_INSTALL_PROMPTS`**, **`LTM_INSTALL_CRON`** (kèm skip: ghi cron mặc định), **`LTM_INSTALL_PROFILE`**, **`PREFIX`**, **`DESTDIR`**… xem trong **`install.sh`**. Bot có thêm **`REMOTE_CMD_TIMEOUT`** trong file cấu hình.
-
-Trên Telegram có thể dùng **BotFather → Edit Commands** để nhập danh sách lệnh gợi ý (định dạng theo [tài liệu Telegram](https://core.telegram.org/bots/api#setmycommands)).
-
----
-
-## Giấy phép
-
-Xem [LICENSE](LICENSE).
