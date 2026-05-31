@@ -72,6 +72,7 @@ fi
 install -m 755 "$SCRIPT_DIR/scripts/ltm-bot-core.sh" "$SHARE/"
 install -m 755 "$SCRIPT_DIR/scripts/ltm-watch.sh" "$BIN/ltm-watch"
 install -m 755 "$SCRIPT_DIR/scripts/ltm-bot-sync-commands.sh" "$BIN/ltm-bot-sync-commands"
+install -m 755 "$SCRIPT_DIR/scripts/ltm-self-update.sh" "$BIN/ltm-self-update"
 
 ln -sf server-telegram-update "$BIN/ltm-update"
 ln -sf server-telegram-report "$BIN/ltm-report"
@@ -95,6 +96,7 @@ install_compat_links() {
   ln -sfn "/usr/local/bin/ltm-schedule" /usr/bin/ltm-schedule 2>/dev/null || true
   ln -sfn "/usr/local/bin/ltm-bot" /usr/bin/ltm-bot 2>/dev/null || true
   ln -sfn "/usr/local/bin/ltm-watch" /usr/bin/ltm-watch 2>/dev/null || true
+  ln -sfn "/usr/local/bin/ltm-self-update" /usr/bin/ltm-self-update 2>/dev/null || true
   rm -f -- /usr/bin/ltm-report-en 2>/dev/null || true
 }
 
@@ -106,6 +108,7 @@ install -m 644 "$SCRIPT_DIR/scripts/ltm-allowed-services.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/ltm-allowed-docker.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/ltm-allow-commands.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/ltm-watch.service.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-self-update.conf.example" "$SHARE/"
 if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
   install -m 644 "$SCRIPT_DIR/VERSION" "$SHARE/VERSION"
 fi
@@ -360,6 +363,55 @@ interactive_configure() {
   fi
 }
 
+_maybe_self_update_conf() {
+  [[ -n "${DESTDIR:-}" ]] && return 0
+  [[ -d "${SCRIPT_DIR}/.git" ]] || return 0
+  if [[ "${SKIP_INSTALL_PROMPTS:-0}" == "1" ]]; then
+    case "${LTM_INSTALL_SELF_UPDATE:-}" in
+    1 | yes | y | Y | weekly)
+      if [[ ! -f /etc/ltm-self-update.conf ]]; then
+        {
+          echo "# Sinh boi install.sh"
+          echo "LTM_REPO_DIR=\"${SCRIPT_DIR}\""
+          echo "GIT_BRANCH=\"${LTM_INSTALL_GIT_BRANCH:-main}\""
+          echo "LTM_INSTALL_REPORT_LANG=\"${INSTALL_LANG}\""
+        } >/etc/ltm-self-update.conf
+        chmod 644 /etc/ltm-self-update.conf
+      fi
+      if [[ -x "$BIN/ltm-schedule" ]]; then
+        "$BIN/ltm-schedule" apply --self-update weekly --self-update-hour "${LTM_INSTALL_SELF_UPDATE_HOUR:-4}" </dev/null || true
+      fi
+      ;;
+    esac
+    return 0
+  fi
+  if [[ ! -t 0 ]] || [[ ! -c /dev/tty ]]; then
+    return 0
+  fi
+  echo ""
+  if ! _prompt_yes "Tu dong cap nhat script LTM tu git (ltm-self-update)? Can giu thu muc repo." n; then
+    return 0
+  fi
+  local repo="${SCRIPT_DIR}" br="main" suh=4
+  read -r -p "  Duong dan repo [Enter = ${SCRIPT_DIR}]: " repo </dev/tty || true
+  repo="${repo:-$SCRIPT_DIR}"
+  read -r -p "  Nhanh git [Enter = main]: " br </dev/tty || true
+  br="${br:-main}"
+  {
+    echo "# Sinh boi install.sh"
+    echo "LTM_REPO_DIR=\"${repo}\""
+    echo "GIT_BRANCH=\"${br}\""
+    echo "LTM_INSTALL_REPORT_LANG=\"${INSTALL_LANG}\""
+  } >/etc/ltm-self-update.conf
+  chmod 644 /etc/ltm-self-update.conf
+  echo "Da tao /etc/ltm-self-update.conf"
+  if _prompt_yes "  Dat cron cap nhat LTM moi Chu Nhat 04:00?" y; then
+    read -r -p "  Gio CN (0-23), Enter = 4: " suh </dev/tty || true
+    suh="${suh:-4}"
+    [[ -x "$BIN/ltm-schedule" ]] && "$BIN/ltm-schedule" apply --self-update weekly --self-update-hour "$suh" </dev/null || true
+  fi
+}
+
 _maybe_cron_schedule() {
   [[ -n "${DESTDIR:-}" ]] && return 0
   if [[ "${SKIP_INSTALL_PROMPTS:-0}" == "1" ]]; then
@@ -418,6 +470,7 @@ _maybe_cron_schedule() {
 
 interactive_configure
 _maybe_cron_schedule
+_maybe_self_update_conf
 install_compat_links
 
 cat <<EOF
@@ -429,12 +482,14 @@ Da cai:
   $BIN/ltm-bot                 - bot lenh Telegram (can jq, xem README)
   $BIN/ltm-schedule           - ghi lich cron bao/cap nhat
   $BIN/ltm-watch              - canh bao theo nguong (xem ltm-watch.conf.example)
+  $BIN/ltm-self-update        - tu cap nhat LTM tu git (can /etc/ltm-self-update.conf)
 
 Mau tham chieu (neu khong dung file da tao):
   $SHARE/server-telegram-update.conf.example
   $SHARE/server-telegram-report.conf.example
   $SHARE/ltm-telegram-bot.conf.example
   $SHARE/ltm-watch.conf.example
+  $SHARE/ltm-self-update.conf.example
   $SHARE/ltm-allowed-*.conf.example  # whitelist hanh dong bot
 
 Chay:
@@ -443,6 +498,7 @@ Chay:
   sudo ltm-bot                  - lenh tu Telegram (/report, /help, ...)
   sudo ltm-schedule             - hoac: sudo ltm-schedule defaults
   sudo ltm-watch                - mot lan; systemd: ltm-watch --loop
+  sudo ltm-self-update          - cap nhat LTM tu git + cai lai binary
 
 Sau khi git pull ban moi:  SKIP_INSTALL_PROMPTS=1 sudo bash install.sh
   (ghi de lenh + mau share, giu /etc; systemd: systemctl restart ltm-bot neu co)
@@ -453,4 +509,6 @@ Tuy chon moi truong:
   LTM_INSTALL_REPORT_LANG=vi|en - vi/en cho tin Telegram (menu cai dat luon khong dau)
   LTM_INSTALL_PROFILE=basic     - cau hinh tuong tac ngan (bo qua menu 1/2)
   LTM_INSTALL_PROFILE=advanced  - hoi day du nhu chon "2" tren menu
+  LTM_INSTALL_SELF_UPDATE=1     - kem SKIP_INSTALL_PROMPTS: tao /etc/ltm-self-update.conf + cron CN
+  LTM_INSTALL_SELF_UPDATE_HOUR=4
 EOF

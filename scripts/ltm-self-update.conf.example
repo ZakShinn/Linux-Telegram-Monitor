@@ -1,0 +1,20 @@
+# Tu cap nhat Linux-Telegram-Monitor tu git (ltm-self-update)
+# Copy: sudo cp .../ltm-self-update.conf.example /etc/ltm-self-update.conf
+
+# Thu muc da git clone (bat buoc)
+LTM_REPO_DIR="/opt/Linux-Telegram-Monitor"
+
+GIT_REMOTE="origin"
+GIT_BRANCH="main"
+
+# Truyen cho install.sh khi cap nhat
+LTM_INSTALL_REPORT_LANG="vi"
+INSTALL_SCRIPT="install.sh"
+AUTO_INSTALL=1
+
+# Sau khi cap nhat thanh cong
+NOTIFY_TELEGRAM=1
+RESTART_LTM_BOT=1
+SYNC_BOT_COMMANDS=1
+
+# Lich cron: sudo ltm-schedule apply --self-update weekly --self-update-hour 4

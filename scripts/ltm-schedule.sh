@@ -4,7 +4,8 @@
 #   sudo ltm-schedule                 # wizard tuy chon gio
 #   sudo ltm-schedule defaults        # bao 15 phut/lan + cap nhat hang ngay 00:00
 #   sudo ltm-schedule apply --report 15m --update daily [--update-hour 0]
-#   sudo ltm-schedule apply --report-off --update off
+#   sudo ltm-schedule apply --self-update weekly [--self-update-hour 4]
+#   sudo ltm-schedule apply --report-off --update off --self-update off
 #   sudo ltm-schedule show
 #   sudo ltm-schedule remove
 #
@@ -18,6 +19,10 @@ resolve_report_bin() {
 
 resolve_update_bin() {
   command -v ltm-update 2>/dev/null || echo "${PREFIX:-/usr/local}/bin/ltm-update"
+}
+
+resolve_self_update_bin() {
+  command -v ltm-self-update 2>/dev/null || echo "${PREFIX:-/usr/local}/bin/ltm-self-update"
 }
 
 require_root() {
@@ -73,12 +78,30 @@ update_to_cron() {
   esac
 }
 
+# giong update_to_cron — cap nhat script LTM tu git
+self_update_to_cron() {
+  local mode=${1,,} hod=$2
+  hod="${hod//[^0-9]/}"
+  [[ -z "$hod" ]] && hod=4
+  [[ "$hod" -gt 23 ]] && hod=4
+  case "$mode" in
+  off | none | '') printf '%s' "" ;;
+  weekly) printf '0 %s * * 0' "$hod" ;;
+  daily) printf '0 %s * * *' "$hod" ;;
+  *)
+    echo "--self-update chi nhan: off | weekly | daily." >&2
+    exit 1
+    ;;
+  esac
+}
+
 write_crond() {
-  local rex=$1 uex=$2 rb ub tf
+  local rex=$1 uex=$2 sex=$3 rb ub sb tf
   rb="$(resolve_report_bin)"
   ub="$(resolve_update_bin)"
+  sb="$(resolve_self_update_bin)"
 
-  if [[ -z "${rex//[:space:]/}" ]] && [[ -z "${uex//[:space:]/}" ]]; then
+  if [[ -z "${rex//[:space:]/}" ]] && [[ -z "${uex//[:space:]/}" ]] && [[ -z "${sex//[:space:]/}" ]]; then
     rm -f -- "$CROND"
     echo "Khong con tac vu - da xoa $CROND (neu co)."
     return 0
@@ -98,6 +121,9 @@ CRONEOF
     fi
     if [[ -n "${uex//[:space:]/}" ]]; then
       printf '%s root %s >> /var/log/ltm-update.cron.log 2>&1\n' "$uex" "$ub"
+    fi
+    if [[ -n "${sex//[:space:]/}" ]]; then
+      printf '%s root %s >> /var/log/ltm-self-update.log 2>&1\n' "$sex" "$sb"
     fi
   } >"$tf"
   printf '\n' >>"$tf"
@@ -170,13 +196,13 @@ wizard() {
     ;;
   esac
 
-  write_crond "$rex" "$uex"
+  write_crond "$rex" "$uex" ""
   echo "Xem: sudo ltm-schedule show - Xoa lich: sudo ltm-schedule remove"
 }
 
 cmd_defaults() {
   require_root
-  write_crond "$(report_to_cron 15m)" "$(update_to_cron daily 0)"
+  write_crond "$(report_to_cron 15m)" "$(update_to_cron daily 0)" ""
 }
 
 cmd_show() {
@@ -196,13 +222,14 @@ cmd_remove() {
 usage() {
   echo "sudo ltm-schedule              Wizard chon kieu gui bao/cap nhat"
   echo "sudo ltm-schedule defaults     Goi y: bao 15 phut, cap nhat moi ngay 00:00"
-  echo "sudo ltm-schedule apply --report 15m|6h|30m|12h|off|daily:N --update weekly|daily|off [--update-hour H]"
+  echo "sudo ltm-schedule apply --report 15m ... --update weekly|daily|off [--update-hour H]"
+  echo "  --self-update weekly|daily|off [--self-update-hour H]  (can /etc/ltm-self-update.conf)"
   echo "sudo ltm-schedule show | remove"
 }
 
 cmd_apply() {
   require_root
-  local rep=15m up=daily uh=0
+  local rep=15m up=daily uh=0 su=off suh=4
   while [[ $# -gt 0 ]]; do
     case "$1" in
     --report)
@@ -237,6 +264,26 @@ cmd_apply() {
       uh=$2
       shift 2
       ;;
+    --self-update)
+      [[ $# -lt 2 ]] && {
+        echo "Thieu gia tri sau --self-update" >&2
+        exit 1
+      }
+      su=$2
+      shift 2
+      ;;
+    --self-update-off)
+      su=off
+      shift
+      ;;
+    --self-update-hour)
+      [[ $# -lt 2 ]] && {
+        echo "Thieu gia tri sau --self-update-hour" >&2
+        exit 1
+      }
+      suh=$2
+      shift 2
+      ;;
     *)
       echo "Khong nhan: $1 - sudo ltm-schedule help" >&2
       exit 1
@@ -254,7 +301,16 @@ cmd_apply() {
     exit 1
     ;;
   esac
-  write_crond "$rx" "$ux"
+  case "${su,,}" in
+  off | none | '') sx="" ;;
+  weekly) sx="$(self_update_to_cron weekly "$suh")" ;;
+  daily) sx="$(self_update_to_cron daily "$suh")" ;;
+  *)
+    echo "--self-update chi: off | weekly | daily ($su)." >&2
+    exit 1
+    ;;
+  esac
+  write_crond "$rx" "$ux" "$sx"
 }
 
 main() {

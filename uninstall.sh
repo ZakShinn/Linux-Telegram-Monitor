@@ -57,7 +57,8 @@ remove_etc_confs() {
     /etc/server-telegram-update.conf \
     /etc/server-telegram-report.conf \
     /etc/ltm-telegram-bot.conf \
-    /etc/ltm-watch.conf; do
+    /etc/ltm-watch.conf \
+    /etc/ltm-self-update.conf; do
     if [[ -e "$f" ]] || [[ -L "$f" ]]; then
       rm -f -- "$f"
       echo "Đã xoá: $f"
@@ -78,6 +79,7 @@ rm -f -- \
   "$BIN/ltm-schedule" \
   "$BIN/ltm-watch" \
   "$BIN/ltm-bot-sync-commands" \
+  "$BIN/ltm-self-update" \
   2>/dev/null || true
 
 # Dọn symlink tương thích /usr/bin nếu install.sh đã tạo.
@@ -89,6 +91,7 @@ if [[ -z "$DESTDIR" ]] && [[ "$PREFIX" == "/usr/local" ]]; then
     /usr/bin/ltm-bot \
     /usr/bin/ltm-schedule \
     /usr/bin/ltm-watch \
+    /usr/bin/ltm-self-update \
     2>/dev/null || true
 fi
 

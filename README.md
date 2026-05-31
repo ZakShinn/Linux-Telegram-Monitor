@@ -142,10 +142,31 @@ Kiểm tra: disk %, load, RAM %, container unhealthy, TLS sắp hết hạn, HTT
 
 #### Cập nhật nhanh theo nhánh hiện tại
 
+**Tự động (khuyến nghị sau khi cấu hình):**
+
 ```bash
+sudo ltm-self-update
+```
+
+Script sẽ `git fetch/pull` trong `LTM_REPO_DIR`, chạy lại `install.sh`, restart `ltm-bot` (nếu có systemd), đồng bộ menu lệnh Telegram. Log: `/var/log/ltm-self-update.log`.
+
+Cấu hình lần đầu:
+
+```bash
+sudo git clone https://github.com/ZakShinn/Linux-Telegram-Monitor.git /opt/Linux-Telegram-Monitor
+sudo cp /usr/local/share/linux-telegram-monitor/ltm-self-update.conf.example /etc/ltm-self-update.conf
+sudo nano /etc/ltm-self-update.conf   # dat LTM_REPO_DIR
+sudo ltm-schedule apply --self-update weekly --self-update-hour 4
+```
+
+**Tay (không dùng ltm-self-update):**
+
+```bash
+cd /opt/Linux-Telegram-Monitor
 git pull
 sudo SKIP_INSTALL_PROMPTS=1 bash install.sh
 sudo systemctl restart ltm-bot   # nếu chạy bot qua systemd
+sudo ltm-bot-sync-commands
 ```
 
 #### Cập nhật theo tag/version
