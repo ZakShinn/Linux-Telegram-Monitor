@@ -211,7 +211,7 @@ fi
 
 reboot_pkgs_block=""
 if [[ -n "$reboot_hint_pkgs" ]]; then
-  reboot_pkgs_block=$'\n'"<b>Pkg kích hoạt reboot</b> (rút gọn): <code>$(html_escape "$reboot_hint_pkgs")</code>"
+  reboot_pkgs_block=$'\n'"<b>Gói kích hoạt reboot</b> (rút gọn): <code>$(html_escape "$reboot_hint_pkgs")</code>"
 fi
 
 reboot_block=""

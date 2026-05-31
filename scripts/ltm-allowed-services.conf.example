@@ -1,0 +1,6 @@
+# Whitelist systemd unit cho /service restart|start|stop
+# Copy: sudo cp .../ltm-allowed-services.conf.example /etc/ltm-allowed-services.conf
+#
+nginx
+docker
+ssh

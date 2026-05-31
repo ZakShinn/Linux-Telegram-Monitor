@@ -59,3 +59,16 @@ TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
 # MONITOR_UNATTENDED_UPGRADES=1 # systemd status unattended-upgrades (khi có apt)
 # MONITOR_MDSTAT=1              # /proc/mdstat nếu có RAID md
 # MONITOR_NFS_MOUNTS=1          # findmnt NFS (hiện khi có mount)
+#
+# Mở rộng (mặc định tắt, trừ SNAPSHOT_COMPARE):
+# MONITOR_GPU=0                 # nvidia-smi
+# MONITOR_ZFS=0                 # zpool
+# MONITOR_LVM=0                 # pvs/vgs/lvs
+# MONITOR_SMART=0               # smartctl -H (cần smartmontools)
+# MONITOR_BACKUP_MARKERS=0
+# BACKUP_MARKER_PATHS="/var/backups/latest.tar.gz,/var/log/backup.ok"
+# MONITOR_HTTP_CHECK=0
+# HTTP_CHECK_URLS="https://example.com"
+# MONITOR_SNAPSHOT_COMPARE=1    # so sánh disk/RAM/load với lần report trước
+# SNAPSHOT_DIR=/var/lib/ltm
+# POST_REPORT_HOOK_DIR=/etc/ltm/hooks.d   # script *.sh executable chạy sau report

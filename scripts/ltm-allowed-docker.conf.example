@@ -1,0 +1,5 @@
+# Whitelist ten container cho /docker_restart
+# Copy: sudo cp .../ltm-allowed-docker.conf.example /etc/ltm-allowed-docker.conf
+#
+myapp
+traefik

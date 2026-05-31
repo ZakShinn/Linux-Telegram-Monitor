@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # linux-telegram-monitor - ghi /etc/cron.d/linux-telegram-monitor cho ltm-report / ltm-update
 #
-#   sudo ltm-schedule                 # wizard tùy chọn giờ
+#   sudo ltm-schedule                 # wizard tuy chon gio
 #   sudo ltm-schedule defaults        # bao 15 phut/lan + cap nhat hang ngay 00:00
 #   sudo ltm-schedule apply --report 15m --update daily [--update-hour 0]
 #   sudo ltm-schedule apply --report-off --update off

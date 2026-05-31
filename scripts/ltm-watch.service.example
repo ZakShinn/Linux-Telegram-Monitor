@@ -1,0 +1,12 @@
+[Unit]
+Description=Linux Telegram Monitor watch (threshold alerts)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ltm-watch --loop
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+# ltm-watch — canh bao Telegram theo nguong (khong gui full report)
+# Token/chat: co the de trong va source /etc/server-telegram-report.conf
+
+# TELEGRAM_BOT_TOKEN=""
+# TELEGRAM_CHAT_ID=""
+
+WATCH_INTERVAL=300
+WATCH_LANG=vi
+
+WATCH_DISK_PERCENT=90
+WATCH_LOAD_PER_CPU=2
+WATCH_MEM_PERCENT=95
+WATCH_DOCKER_UNHEALTHY=1
+WATCH_TLS_DAYS=14
+
+# URL phay: https://example.com,http://127.0.0.1:8080/health
+WATCH_HTTP_URLS=""
+
+STATE_DIR=/var/lib/ltm-watch
+
+# Chay lien tuc: sudo ltm-watch --loop
+# systemd: ExecStart=/usr/local/bin/ltm-watch --loop

@@ -88,6 +88,18 @@ MONITOR_FLATPAK="${MONITOR_FLATPAK:-0}"
 MONITOR_UNATTENDED_UPGRADES="${MONITOR_UNATTENDED_UPGRADES:-1}"
 MONITOR_MDSTAT="${MONITOR_MDSTAT:-1}"
 MONITOR_NFS_MOUNTS="${MONITOR_NFS_MOUNTS:-1}"
+# Mo rong (0=tat mac dinh, tru SNAPSHOT_COMPARE)
+MONITOR_GPU="${MONITOR_GPU:-0}"
+MONITOR_ZFS="${MONITOR_ZFS:-0}"
+MONITOR_LVM="${MONITOR_LVM:-0}"
+MONITOR_SMART="${MONITOR_SMART:-0}"
+MONITOR_BACKUP_MARKERS="${MONITOR_BACKUP_MARKERS:-0}"
+BACKUP_MARKER_PATHS="${BACKUP_MARKER_PATHS:-}"
+MONITOR_HTTP_CHECK="${MONITOR_HTTP_CHECK:-0}"
+HTTP_CHECK_URLS="${HTTP_CHECK_URLS:-}"
+MONITOR_SNAPSHOT_COMPARE="${MONITOR_SNAPSHOT_COMPARE:-1}"
+SNAPSHOT_DIR="${SNAPSHOT_DIR:-/var/lib/ltm}"
+POST_REPORT_HOOK_DIR="${POST_REPORT_HOOK_DIR:-/etc/ltm/hooks.d}"
 
 API_MSG_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
 API_DOC_URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
@@ -321,7 +333,7 @@ extra_monitoring_debian_ubuntu() {
 
   if [[ "$MONITOR_NEEDRESTART" == "1" ]] && command -v needrestart >/dev/null 2>&1; then
     buf=$(needrestart -b 2>/dev/null | head -n 65 || true)
-    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "♻️ needrestart (nhị phân/dịch vụ cần restart)" "$buf"
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "♻️ needrestart (process/dịch vụ cần restart)" "$buf"
   fi
 
   if [[ "$MONITOR_APPARMOR" == "1" ]] && command -v aa-status >/dev/null 2>&1; then
@@ -587,7 +599,7 @@ docker_report() {
   local dx
   if [[ "${MONITOR_DOCKER_SYSTEM_DF:-1}" == "1" ]]; then
     dx=$(docker system df 2>/dev/null || true)
-    [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Docker — <code>system df</code> (ảnh/container/build cache)" "$dx"
+    [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Docker — <code>system df</code> (image / container / build cache)" "$dx"
   fi
 
   if [[ "${MONITOR_DOCKER_HEALTH:-1}" == "1" ]]; then
@@ -608,6 +620,99 @@ docker_report() {
     dx=$(docker network ls --format 'table {{.Name}}	{{.Driver}}	{{.Scope}}	{{.ID}}' 2>/dev/null | head -n 40 || true)
     [[ -n "${dx//[:space:]/}" ]] && tg_send_pre_trunc "🐳 Docker networks" "$dx"
   fi
+}
+
+report_extended_hardware() {
+  local buf
+
+  if [[ "$MONITOR_GPU" == "1" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+    buf=$(nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader 2>/dev/null | head -n 10 || true)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🎮 GPU (nvidia-smi)" "$buf"
+  fi
+
+  if [[ "$MONITOR_ZFS" == "1" ]] && command -v zpool >/dev/null 2>&1; then
+    buf=$(zpool list 2>/dev/null; echo "---"; zpool status 2>/dev/null | head -n 40)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "💾 ZFS" "$buf"
+  fi
+
+  if [[ "$MONITOR_LVM" == "1" ]] && command -v pvs >/dev/null 2>&1; then
+    buf=$(pvs 2>/dev/null; echo "---"; vgs 2>/dev/null; echo "---"; lvs 2>/dev/null | head -n 35)
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "💾 LVM" "$buf"
+  fi
+
+  if [[ "$MONITOR_SMART" == "1" ]] && command -v smartctl >/dev/null 2>&1; then
+    buf=""
+    mapfile -t _disks < <(lsblk -d -n -o NAME,TYPE 2>/dev/null | awk '$2=="disk"{print "/dev/"$1}')
+    local d sum
+    for d in "${_disks[@]:-}"; do
+      [[ -b "$d" ]] || continue
+      sum=$(smartctl -H "$d" 2>/dev/null | grep -E 'SMART overall|overall-health|test result' | head -n 1 || true)
+      [[ -n "$sum" ]] && buf+="${d}: ${sum}"$'\n'
+    done
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🧯 SMART (tóm tắt)" "$buf"
+  fi
+
+  if [[ "$MONITOR_BACKUP_MARKERS" == "1" ]] && [[ -n "${BACKUP_MARKER_PATHS// }" ]]; then
+    buf=""
+    local p mtime age
+    IFS=',' read -ra _bps <<< "${BACKUP_MARKER_PATHS// /,}"
+    for p in "${_bps[@]}"; do
+      p="${p//[[:space:]]/}"
+      [[ -z "$p" ]] && continue
+      if [[ -e "$p" ]]; then
+        mtime=$(stat -c '%y' "$p" 2>/dev/null | cut -d. -f1)
+        age=$(( ($(date +%s) - $(date -d "$mtime" +%s 2>/dev/null || echo 0)) / 86400 ))
+        buf+="${p} | last: ${mtime} (~${age}d ago)"$'\n'
+      else
+        buf+="${p} | MISSING"$'\n'
+      fi
+    done
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "💾 Backup markers" "$buf"
+  fi
+
+  if [[ "$MONITOR_HTTP_CHECK" == "1" ]] && [[ -n "${HTTP_CHECK_URLS// }" ]]; then
+    buf=""
+    local url code
+    IFS=',' read -ra _urls <<< "${HTTP_CHECK_URLS// /,}"
+    for url in "${_urls[@]}"; do
+      url="${url//[[:space:]]/}"
+      [[ -z "$url" ]] && continue
+      code=$(curl -o /dev/null -fsS -w '%{http_code}' --max-time 10 "$url" 2>/dev/null || echo "ERR")
+      buf+="${url} → HTTP ${code}"$'\n'
+    done
+    [[ -n "${buf//[:space:]/}" ]] && tg_send_pre_trunc "🌐 HTTP check" "$buf"
+  fi
+}
+
+report_snapshot_compare() {
+  [[ "$MONITOR_SNAPSHOT_COMPARE" == "1" ]] || return 0
+  mkdir -p "$SNAPSHOT_DIR" 2>/dev/null || return 0
+  local cur="${SNAPSHOT_DIR}/last-metrics.env"
+  local disk_pct mem_used load1 pd pm pl had=0
+  disk_pct=$(df -P / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
+  mem_used=$(free 2>/dev/null | awk '/^Mem:/{printf "%d", $3}')
+  load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+  if [[ -f "$cur" ]]; then
+    had=1
+    pd=$(grep '^disk_root_pct=' "$cur" 2>/dev/null | cut -d= -f2-)
+    pm=$(grep '^mem_used_kb=' "$cur" 2>/dev/null | cut -d= -f2-)
+    pl=$(grep '^load1=' "$cur" 2>/dev/null | cut -d= -f2-)
+  fi
+  printf 'disk_root_pct=%s\nmem_used_kb=%s\nload1=%s\n' "${disk_pct:-0}" "${mem_used:-0}" "${load1:-0}" >"$cur"
+  [[ "$had" -eq 1 ]] || return 0
+  tg_send "<b>📈 So với lần report trước</b>
+• Ổ /: <code>${pd:-?}%</code> → <code>${disk_pct:-?}%</code>
+• RAM used: <code>${pm:-?}</code> → <code>${mem_used:-?}</code> KB
+• load1: <code>${pl:-?}</code> → <code>${load1:-?}</code>"
+}
+
+run_post_report_hooks() {
+  [[ -d "$POST_REPORT_HOOK_DIR" ]] || return 0
+  local f
+  for f in "$POST_REPORT_HOOK_DIR"/*; do
+    [[ -f "$f" ]] && [[ -x "$f" ]] || continue
+    "$f" >/dev/null 2>&1 || true
+  done
 }
 
 # --- main ---
@@ -711,5 +816,9 @@ extra_monitoring
 if [[ "$MONITOR_DOCKER" == "1" ]]; then
   docker_report
 fi
+
+report_extended_hardware
+report_snapshot_compare
+run_post_report_hooks
 
 exit 0

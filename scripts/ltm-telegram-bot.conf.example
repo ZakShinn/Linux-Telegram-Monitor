@@ -1,23 +1,34 @@
-# Bot lệnh Telegram — chỉ Chat ID khớp mới được điều khiển
-# Có thể chỉ nguồn token từ file báo cáo:
+# Bot lenh Telegram — chi Chat ID khop moi dieu khien duoc
+# Co the chi nguon token tu file bao cao:
 #   source /etc/server-telegram-report.conf
 
 TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+# Mot hoac nhieu chat (phay): "123456789,-1001234567890"
 TELEGRAM_CHAT_ID="YOUR_CHAT_ID_HERE"
 
-# Cho phép lệnh từ xa (1=bật)
+# Chat duoc phep lenh nguy hiem (/reboot_now, /service restart, ...). De trong = chat dau tien.
+# TELEGRAM_ADMIN_CHAT_ID=""
+
+# Cho phep lenh tu xa (1=bat)
 ALLOW_REMOTE_REPORT=1
 ALLOW_REMOTE_UPDATE=0
+ALLOW_REMOTE_ACTION=0
 
-# Đường dẫn script (sau install.sh)
+# Xac nhan hanh dong: /reboot_now -> bot tra token -> /confirm <token>
+CONFIRM_TTL_SEC=90
+
+# Duong dan script (sau install.sh)
 PATH_REPORT="/usr/local/bin/server-telegram-report"
 PATH_UPDATE="/usr/local/bin/server-telegram-update"
+PATH_SCHEDULE="/usr/local/bin/ltm-schedule"
 
-# Nếu bot chạy không phải root: để trống hoặc ví dụ SUDO_CMD="sudo -n"
+# Whitelist (copy mau tu /usr/local/share/linux-telegram-monitor/):
+#   /etc/ltm-allowed-services.conf   — systemctl restart <unit>
+#   /etc/ltm-allowed-docker.conf     — docker restart <name>
+#   /etc/ltm-allow-commands.conf     — /exec <ten> -> /etc/ltm/exec/<ten>.sh
+
+# Neu bot chay khong phai root: de trong hoac vi du SUDO_CMD="sudo -n"
 SUDO_CMD=""
 
-# Long polling (giây, tối đa 50)
 POLL_TIMEOUT=25
-
-# Timeout lệnh tóm tắt trong Telegram (/docker, /df, /quick…) — không áp cho /report
 REMOTE_CMD_TIMEOUT=35

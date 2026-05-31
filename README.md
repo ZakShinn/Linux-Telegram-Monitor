@@ -121,6 +121,23 @@ sudo nano /etc/ltm-telegram-bot.conf
 sudo ltm-bot
 ```
 
+Menu lệnh Telegram (**tự cập nhật** khi `ltm-bot` khởi động qua `setMyCommands`, tiếng Việt có dấu). Cập nhật tay: `sudo ltm-bot-sync-commands` hoặc `/setcommands` (admin).
+
+**Lệnh bot (Telegram, tiếng Việt có dấu):** `/help` · đọc: `/quick` `/report` `/apt` `/rebootcheck` `/journal` `/tls` `/ufw` `/dns` `/route` `/timers` `/version` `/cron` `/schedule` `/lastreport` + docker/* + hệ thống · hành động (cần `ALLOW_REMOTE_ACTION=1` + chat admin + `/confirm`): `/reboot_now` `/service restart|status <unit>` `/docker_restart` `/docker_logs` `/docker_prune` `/apt_security` · `/silence 2h` tắt `ltm-watch` tạm thời.
+
+Whitelist: copy mẫu `ltm-allowed-services.conf.example`, `ltm-allowed-docker.conf.example` vào `/etc/`.
+
+### ltm-watch (cảnh báo theo ngưỡng)
+
+```bash
+sudo cp /usr/local/share/linux-telegram-monitor/ltm-watch.conf.example /etc/ltm-watch.conf
+sudo chmod 600 /etc/ltm-watch.conf
+sudo ltm-watch              # một lần
+sudo ltm-watch --loop       # chạy nền (systemd)
+```
+
+Kiểm tra: disk %, load, RAM %, container unhealthy, TLS sắp hết hạn, HTTP URL — chỉ gửi Telegram khi trạng thái **đổi** (tránh spam).
+
 ### Cập nhật
 
 #### Cập nhật nhanh theo nhánh hiện tại

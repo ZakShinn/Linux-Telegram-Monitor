@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Cài vào PREFIX/bin. Symlink: ltm-update, ltm-report
+# Cai vao PREFIX/bin. Symlink: ltm-update, ltm-report
 #
 #   sudo bash install.sh
 #
-# Tự động bỏ qua hỏi tuỳ chọn: SKIP_INSTALL_PROMPTS=1 hoặc không có TTY (cron/pipe)
-# Kiểu cấu hình (chỉ khi có TTY): LTM_INSTALL_PROFILE=basic|advanced — bỏ qua menu chọn 1/2
-# Lịch cron sau cài khi không hỏi: LTM_INSTALL_CRON=default (báo 15 phút + cập nhật mỗi ngày 00:00)
-# Ngôn ngữ mặc định cho ltm-report: LTM_INSTALL_REPORT_LANG=vi|en (mặc định: vi)
-# Chỉ tạo file trong DESTDIR (đóng gói): không ghi /etc
+# Tu dong bo qua hoi tuy chon: SKIP_INSTALL_PROMPTS=1 hoac khong co TTY (cron/pipe)
+# Kieu cau hinh (chi khi co TTY): LTM_INSTALL_PROFILE=basic|advanced
+# Lich cron sau cai: LTM_INSTALL_CRON=default (bao 15 phut + cap nhat moi ngay 00:00)
+# Ngon ngu tin Telegram: LTM_INSTALL_REPORT_LANG=vi|en (vi = co dau; menu cai dat khong dau)
+# Chi tao file trong DESTDIR: khong ghi /etc
 
 set -euo pipefail
 
@@ -44,7 +44,7 @@ select_install_lang() {
   if [[ "${SKIP_INSTALL_PROMPTS:-0}" != "1" ]] && [[ -t 0 ]] && [[ -c /dev/tty ]] && [[ -z "${LTM_INSTALL_REPORT_LANG:-}" ]]; then
     echo ""
     echo "======== Chon ngon ngu cai dat / installation language ========"
-    echo "  1) Tieng Viet (ltm-update + ltm-report)"
+    echo "  1) Tieng Viet (ltm-update + ltm-report, tin Telegram co dau)"
     echo "  2) English (ltm-update + ltm-report in English)"
     local lc
     read -r -p "Nhap 1 hoac 2 [Enter = 1]: " lc </dev/tty || true
@@ -69,6 +69,10 @@ else
   install -m 755 "$SCRIPT_DIR/scripts/ltm-schedule.sh" "$BIN/ltm-schedule"
 fi
 
+install -m 755 "$SCRIPT_DIR/scripts/ltm-bot-core.sh" "$SHARE/"
+install -m 755 "$SCRIPT_DIR/scripts/ltm-watch.sh" "$BIN/ltm-watch"
+install -m 755 "$SCRIPT_DIR/scripts/ltm-bot-sync-commands.sh" "$BIN/ltm-bot-sync-commands"
+
 ln -sf server-telegram-update "$BIN/ltm-update"
 ln -sf server-telegram-report "$BIN/ltm-report"
 rm -f -- \
@@ -90,17 +94,23 @@ install_compat_links() {
   ln -sfn "/usr/local/bin/ltm-report" /usr/bin/ltm-report 2>/dev/null || true
   ln -sfn "/usr/local/bin/ltm-schedule" /usr/bin/ltm-schedule 2>/dev/null || true
   ln -sfn "/usr/local/bin/ltm-bot" /usr/bin/ltm-bot 2>/dev/null || true
+  ln -sfn "/usr/local/bin/ltm-watch" /usr/bin/ltm-watch 2>/dev/null || true
   rm -f -- /usr/bin/ltm-report-en 2>/dev/null || true
 }
 
 install -m 644 "$SCRIPT_DIR/scripts/server-telegram-update.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/server-telegram-report.conf.example" "$SHARE/"
 install -m 644 "$SCRIPT_DIR/scripts/ltm-telegram-bot.conf.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-watch.conf.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-allowed-services.conf.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-allowed-docker.conf.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-allow-commands.conf.example" "$SHARE/"
+install -m 644 "$SCRIPT_DIR/scripts/ltm-watch.service.example" "$SHARE/"
 if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
   install -m 644 "$SCRIPT_DIR/VERSION" "$SHARE/VERSION"
 fi
 
-# --- Hỏi [Y/n] hoặc [y/N]; trả về 0 = có / bật, 1 = không / tắt
+# --- Hoi [Y/n] hoac [y/N]; tra ve 0 = co/bat, 1 = khong/tat
 _prompt_yes() {
   local msg=$1
   local def=$2
@@ -156,7 +166,7 @@ interactive_configure() {
   local R_BOOT=1 R_SYSTEMD=1 R_DF=1 R_INODE=1 R_MEM=1 R_SS=1 R_IP=1
   local R_DISKA=1 R_ZOMB=1 R_TLS=0 R_JRNL=0
   local R_DOCKER_DF=1 R_DOCKER_HL=1 R_DOCKER_COMPOSE=0 R_DOCKER_NET=0
-  local B_ALLOW_REPORT=1 B_ALLOW_UPDATE=1
+  local B_ALLOW_REPORT=1 B_ALLOW_UPDATE=1 B_ALLOW_ACTION=0
 
   echo ""
   echo "======== Tuy chon tinh nang (Enter = chu in HOA trong [Y/n]) ========"
@@ -175,7 +185,7 @@ interactive_configure() {
   echo ""
   echo "-- server-telegram-report (ltm-report) --"
   _prompt_yes "  Tu cai goi thieu (curl, iproute/ss...)?" y && R_INSTALL_DEPS=1 || R_INSTALL_DEPS=0
-  _prompt_yes "  Bao cao Docker (containers, stats)? Tat neu may khong dung Docker." y && R_DOCKER=1 || R_DOCKER=0
+  _prompt_yes "  Bao cao Docker (container, stats)? Tat neu may khong dung Docker." y && R_DOCKER=1 || R_DOCKER=0
 
   if [[ "$profile" == "advanced" ]]; then
     echo ""
@@ -201,16 +211,17 @@ interactive_configure() {
   elif [[ "$profile" == "advanced" ]]; then
     echo ""
     echo "-- Docker / container (khi bao cao Docker bat) --"
-    _prompt_yes "  Gui 'docker system df' (dung luong images/containers)?" y && R_DOCKER_DF=1 || R_DOCKER_DF=0
+    _prompt_yes "  Gui 'docker system df' (dung luong image/container)?" y && R_DOCKER_DF=1 || R_DOCKER_DF=0
     _prompt_yes "  Liet ke container unhealthy (healthcheck)?" y && R_DOCKER_HL=1 || R_DOCKER_HL=0
-    _prompt_yes "  Chạy 'docker compose ls -a' (Compose v2)?" n && R_DOCKER_COMPOSE=1 || R_DOCKER_COMPOSE=0
-    _prompt_yes "  Chạy 'docker network ls' (bridge/host/…)?" n && R_DOCKER_NET=1 || R_DOCKER_NET=0
+    _prompt_yes "  Chay 'docker compose ls -a' (Compose v2)?" n && R_DOCKER_COMPOSE=1 || R_DOCKER_COMPOSE=0
+    _prompt_yes "  Chay 'docker network ls' (bridge/host/...)?" n && R_DOCKER_NET=1 || R_DOCKER_NET=0
   fi
 
   echo ""
   echo "-- Telegram bot command control (ltm-bot) --"
   _prompt_yes "  Bat dieu khien lenh tu Telegram (/report, /status)?" y && B_ALLOW_REPORT=1 || B_ALLOW_REPORT=0
   _prompt_yes "  Bat lenh /update tu Telegram? (can than voi quyen root)" y && B_ALLOW_UPDATE=1 || B_ALLOW_UPDATE=0
+  _prompt_yes "  Bat hanh dong tu xa (/reboot_now, /service, /docker_restart)? CAN THAN." n && B_ALLOW_ACTION=1 || B_ALLOW_ACTION=0
 
   echo ""
   if ! _prompt_yes "Ghi cac tuy chon tren vao /etc/*.conf?" y; then
@@ -327,6 +338,8 @@ interactive_configure() {
       printf 'TELEGRAM_CHAT_ID=%q\n' "$TG_CHAT_REP"
       echo "ALLOW_REMOTE_REPORT=$B_ALLOW_REPORT"
       echo "ALLOW_REMOTE_UPDATE=$B_ALLOW_UPDATE"
+      echo "ALLOW_REMOTE_ACTION=$B_ALLOW_ACTION"
+      echo '# TELEGRAM_ADMIN_CHAT_ID=""  # de trong = chat dau tien trong TELEGRAM_CHAT_ID'
       echo "PATH_REPORT=\"${BIN}/server-telegram-report\""
       echo "PATH_UPDATE=\"${BIN}/server-telegram-update\""
       echo "SUDO_CMD=\"\""
@@ -390,12 +403,12 @@ _maybe_cron_schedule() {
       0) up="off" ;;
       2)
         up="weekly"
-        read -r -p "  Giờ chạy CN (0-23), Enter = 0: " uh </dev/tty || true
+        read -r -p "  Gio chay CN (0-23), Enter = 0: " uh </dev/tty || true
         uh="${uh:-0}"
         ;;
       1|*)
         up="daily"
-        read -r -p "  Giờ chạy mỗi ngày (0-23), Enter = 0: " uh </dev/tty || true
+        read -r -p "  Gio chay moi ngay (0-23), Enter = 0: " uh </dev/tty || true
         uh="${uh:-0}"
         ;;
     esac
@@ -408,24 +421,28 @@ _maybe_cron_schedule
 install_compat_links
 
 cat <<EOF
-Ngon ngu da cai: ${INSTALL_LANG}
+Ngon ngu bao cao Telegram: ${INSTALL_LANG} (vi = co dau tren Telegram)
 
 Da cai:
   $BIN/server-telegram-update   (ltm-update)
   $BIN/server-telegram-report   (ltm-report)
   $BIN/ltm-bot                 - bot lenh Telegram (can jq, xem README)
   $BIN/ltm-schedule           - ghi lich cron bao/cap nhat
+  $BIN/ltm-watch              - canh bao theo nguong (xem ltm-watch.conf.example)
 
 Mau tham chieu (neu khong dung file da tao):
   $SHARE/server-telegram-update.conf.example
   $SHARE/server-telegram-report.conf.example
   $SHARE/ltm-telegram-bot.conf.example
+  $SHARE/ltm-watch.conf.example
+  $SHARE/ltm-allowed-*.conf.example  # whitelist hanh dong bot
 
 Chay:
-  sudo server-telegram-update   hoặc   sudo ltm-update
-  sudo server-telegram-report  hoặc   sudo ltm-report
+  sudo server-telegram-update   hoac   sudo ltm-update
+  sudo server-telegram-report  hoac   sudo ltm-report
   sudo ltm-bot                  - lenh tu Telegram (/report, /help, ...)
   sudo ltm-schedule             - hoac: sudo ltm-schedule defaults
+  sudo ltm-watch                - mot lan; systemd: ltm-watch --loop
 
 Sau khi git pull ban moi:  SKIP_INSTALL_PROMPTS=1 sudo bash install.sh
   (ghi de lenh + mau share, giu /etc; systemd: systemctl restart ltm-bot neu co)
@@ -433,7 +450,7 @@ Sau khi git pull ban moi:  SKIP_INSTALL_PROMPTS=1 sudo bash install.sh
 Tuy chon moi truong:
   SKIP_INSTALL_PROMPTS=1        - khong hoi, chi cai binary (cron: co the dat LTM_INSTALL_CRON=default)
   LTM_INSTALL_CRON=default      - chi co nghia khi kem SKIP_INSTALL_PROMPTS=1: ghi mac dinh report=15m, update=daily 00:00
-  LTM_INSTALL_REPORT_LANG=vi|en - chon ngon ngu cai dat (script + thong bao Telegram)
+  LTM_INSTALL_REPORT_LANG=vi|en - vi/en cho tin Telegram (menu cai dat luon khong dau)
   LTM_INSTALL_PROFILE=basic     - cau hinh tuong tac ngan (bo qua menu 1/2)
   LTM_INSTALL_PROFILE=advanced  - hoi day du nhu chon "2" tren menu
 EOF

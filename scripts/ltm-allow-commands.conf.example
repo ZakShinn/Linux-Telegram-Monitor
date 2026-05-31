@@ -1,0 +1,4 @@
+# Whitelist ten lenh cho /exec <ten>
+# Script: /etc/ltm/exec/<ten>.sh (chmod +x)
+#
+# backup-status
